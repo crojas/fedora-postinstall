@@ -1,3 +1,16 @@
+Un postinstall para Fedora es una serie de pasos, configuraciones y herramientas recomendadas que se aplican después de instalar el sistema operativo Fedora, con el objetivo de optimizarlo y personalizarlo según las necesidades del usuario. En el caso de un workstation orientado a la programación, la edición de video y los juegos, el postinstall incluye la instalación de software esencial, la configuración de repositorios adicionales, la optimización del rendimiento y la personalización del entorno para asegurar una experiencia fluida, productiva y adaptada a tareas profesionales y de entretenimiento. Este proceso permite transformar una instalación básica de Fedora en una estación de trabajo potente y versátil, lista para afrontar proyectos de desarrollo, edición multimedia y gaming.
+
+## Índice
+
+- [Optimización del Sistema](#mejorar-el-comportamiento-del-gestor-de-paquetes)
+- [Repositorios](#agregar-repositorios-rpmfusion)
+- [Firmware](#actualizar-firmware-de-hardware-via-lvfs)
+- [Drivers NVIDIA](#instalar-drivers-de-nvidia)
+- [Multimedia](#instalar-codecs-multimedia)
+- [Fuentes](#fuentes-de-windows)
+- [Aplicaciones](#instalar-apps)
+- [Gaming](#gaming)
+
 # Mejorar el comportamiento del gestor de paquetes.
 ```
 sudo nano etc/dnf/dnf.conf
@@ -92,3 +105,7 @@ sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore
 ```
 sudo dnf install google-chrome-stable vlc gimp obs-studio
 ```
+
+# Gaming
+
+Para configurar tu sistema para gaming en Fedora, consulta la documentación específica en [docs/gaming.md](docs/gaming.md).
