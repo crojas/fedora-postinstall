@@ -40,6 +40,13 @@ Elimina automáticamente los archivos `.rpm` descargados una vez instalados. Ayu
 sudo dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
 sudo dnf install https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 ```
+# Actualizar firmware de hardware via [LVFS](https://fwupd.org/)
+```
+sudo fwupdmgr refresh --force
+sudo fwupdmgr get-devices
+sudo fwupdmgr get-updates
+sudo fwupdmgr update
+```
 
 # Instalar drivers de NVIDIA
 ```
@@ -58,6 +65,7 @@ sudo dnf swap ffmpeg-free ffmpeg --allowerasing
 ## Instalar codecs
 ```
 sudo dnf update @multimedia --setopt="install_weak_deps=False" --exclude=PackageKit-gstreamer-plugin
+sudo dnf group install -y sound-and-video
 ```
 
 ## Para ejecutar DVD
@@ -71,8 +79,18 @@ sudo dnf install libdvdcss
 sudo dnf install rpmfusion-nonfree-release-tainted
 sudo dnf --repo=rpmfusion-nonfree-tainted install "*-firmware"
 ```
+## Instala librerias para reproducción de video, aceleración por hardware y codificación.
+```
+sudo dnf install ffmpeg-libs libva libva-utils
+```
 
 ## VLC
 ```
 sudo dnf install vlc
+```
+
+# Fuentes de windows
+```
+sudo dnf install curl cabextract xorg-x11-font-utils fontconfig
+sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
 ```
