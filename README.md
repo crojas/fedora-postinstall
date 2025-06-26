@@ -1,4 +1,15 @@
-Un postinstall para Fedora es una serie de pasos, configuraciones y herramientas recomendadas que se aplican después de instalar el sistema operativo Fedora, con el objetivo de optimizarlo y personalizarlo según las necesidades del usuario. En el caso de un workstation orientado a la programación, la edición de video y los juegos, el postinstall incluye la instalación de software esencial, la configuración de repositorios adicionales, la optimización del rendimiento y la personalización del entorno para asegurar una experiencia fluida, productiva y adaptada a tareas profesionales y de entretenimiento. Este proceso permite transformar una instalación básica de Fedora en una estación de trabajo potente y versátil, lista para afrontar proyectos de desarrollo, edición multimedia y gaming.
+Script de postinstalación para Fedora 42 orientado a desarrollo, edición multimedia y gaming.
+
+Configura automáticamente:
+- Repositorios adicionales
+- Drivers de hardware
+- Codecs multimedia completos
+- Herramientas de edición de imágenes y video.
+- Herramientas de desarrollo.
+- Steam y optimizaciones para jugar.
+
+
+Transforma una instalación básica en una estación de trabajo lista para uso profesional.
 
 ## Índice
 
