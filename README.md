@@ -1,6 +1,3 @@
-Postinstall para Fedora workstation, con una configuración para programar, editar imágenes y videos y jugar.
-
-
 # Mejorar el comportamiento del gestor de paquetes.
 ```
 sudo nano etc/dnf/dnf.conf
@@ -47,6 +44,7 @@ sudo fwupdmgr get-devices
 sudo fwupdmgr get-updates
 sudo fwupdmgr update
 ```
+Luego hacer reboot.
 
 # Instalar drivers de NVIDIA
 ```
@@ -55,7 +53,7 @@ sudo dnf install akmod-nvidia xorg-x11-drv-nvidia-cuda
 ```
 Luego hacer reboot.
 
-# Instalar codecs multimedia y VLC
+# Instalar codecs multimedia
 
 ## Cambiar a la version completa de ffmpeg
 ```
@@ -79,18 +77,18 @@ sudo dnf install libdvdcss
 sudo dnf install rpmfusion-nonfree-release-tainted
 sudo dnf --repo=rpmfusion-nonfree-tainted install "*-firmware"
 ```
-## Instala librerias para reproducción de video, aceleración por hardware y codificación.
+## Librerías para reproducción de video, aceleración por hardware y codificación.
 ```
 sudo dnf install ffmpeg-libs libva libva-utils
-```
-
-## VLC
-```
-sudo dnf install vlc
 ```
 
 # Fuentes de windows
 ```
 sudo dnf install curl cabextract xorg-x11-font-utils fontconfig
 sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
+```
+
+# Instalar APPS
+```
+sudo dnf install google-chrome-stable vlc gimp obs-studio
 ```
