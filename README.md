@@ -21,6 +21,7 @@ Transforma una instalación básica en una estación de trabajo lista para uso p
 - [Fuentes](#fuentes-de-windows)
 - [Aplicaciones](#instalar-apps)
 - [Gaming](#gaming)
+- [Desarrollo](#desarrollo)
 
 # Mejorar el comportamiento del gestor de paquetes.
 
@@ -137,3 +138,7 @@ sudo dnf install google-chrome-stable vlc gimp obs-studio
 # Gaming
 
 Para configurar tu sistema para gaming en Fedora, consulta la documentación específica en [docs/gaming.md](docs/gaming.md).
+
+# Desarrollo
+
+Para configurar tu sistema para desarrollo en Fedora, consulta la documentación específica en [docs/development.md](docs/development.md).
