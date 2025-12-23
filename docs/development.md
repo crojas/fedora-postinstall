@@ -39,7 +39,6 @@ source ~/.zshrc
 ```
 sudo dnf group install development-tools
 sudo dnf install gcc gcc-c++ make clang glibc-devel openssl-devel zlib-devel pkg-config
-
 ```
 
 ## Rust
