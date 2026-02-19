@@ -131,8 +131,30 @@ sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore
 
 # Instalar APPS
 
+## Navegador Chrome
+
 ```
-sudo dnf install google-chrome-stable vlc gimp obs-studio
+sudo dnf install dnf-plugins-core
+```
+
+```
+sudo dnf install fedora-workstation-repositories
+sudo dnf config-manager setopt google-chrome.enabled=1
+sudo dnf install google-chrome-stable
+```
+
+## Navegador Brave
+
+```
+sudo dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+
+sudo dnf install brave-browser
+```
+
+## Aplicaciones varias
+
+```
+sudo dnf install vlc gimp obs-studio
 ```
 
 # Gaming
