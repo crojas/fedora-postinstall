@@ -171,3 +171,9 @@ EOL
 sudo dnf makecache
 sudo dnf install antigravity
 ```
+
+# OpenCode
+
+```
+curl -fsSL https://opencode.ai/install | bash
+```
