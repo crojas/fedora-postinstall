@@ -108,6 +108,11 @@ bash Miniforge3-$(uname)-$(uname -m).sh
 source ~/.zshrc
 ```
 
+## UV (Python)
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ### Quitar conda de inicio
 
 ```
