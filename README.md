@@ -154,7 +154,7 @@ sudo dnf install brave-browser
 ## Aplicaciones varias
 
 ```
-sudo dnf install vlc gimp obs-studio
+sudo dnf install vlc gimp obs-studio shotcut
 ```
 
 # Gaming
