@@ -164,3 +164,19 @@ Para configurar tu sistema para gaming en Fedora, consulta la documentación esp
 # Desarrollo
 
 Para configurar tu sistema para desarrollo en Fedora, consulta la documentación específica en [docs/development.md](docs/development.md).
+
+# Instalar script de postinstall
+
+```bash
+curl -sSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh -o install.sh
+chmod +x install.sh
+./install.sh
+```
+
+O ejecutar directamente:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash
+```
+
+El script te permitirá seleccionar qué componentes instalar de forma interactiva.
