@@ -7,7 +7,8 @@ sudo dnf install ghostty
 
 # Install zsh
 
-```sudo dnf install zsh
+```
+sudo dnf install zsh
 zsh --version
 ```
 
