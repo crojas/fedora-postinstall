@@ -89,7 +89,7 @@ source ~/.zshrc
 ## NVM (NodeJS)
 
 ```
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 source ~/.zshrc
 ```
 
