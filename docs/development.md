@@ -1,8 +1,8 @@
 # Install ghostty
 
 ```
-dnf copr enable scottames/ghostty
-dnf install ghostty
+sudo dnf copr enable scottames/ghostty
+sudo dnf install ghostty
 ```
 
 # Install zsh
