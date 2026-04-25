@@ -51,7 +51,7 @@ sudo dnf group install development-tools
 ## Librerias adicionales
 
 ```
-sudo dnf install -y gcc gcc-c++ make clang patch \
+sudo dnf install -y gcc gcc-c++ make cmake clang patch \
   glibc-devel openssl-devel zlib-devel pkg-config \
   readline-devel libffi-devel libyaml-devel \
   gdbm-devel ncurses-devel
@@ -90,22 +90,6 @@ source ~/.zshrc
 
 ```
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-source ~/.zshrc
-```
-
-## RVM (Ruby)
-
-```
-gpg2 --keyserver keyserver.ubuntu.com --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB
-\curl -sSL https://get.rvm.io | bash -s stable
-source ~/.zshrc
-```
-
-## Conda (Python)
-
-```
-curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-bash Miniforge3-$(uname)-$(uname -m).sh
 source ~/.zshrc
 ```
 
