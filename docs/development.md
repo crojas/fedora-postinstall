@@ -86,22 +86,16 @@ export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 source ~/.zshrc
 ```
 
-## NVM (NodeJS)
-
-```
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-source ~/.zshrc
-```
-
 ## UV (Python)
 ```
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Quitar conda de inicio
+## NVM (NodeJS)
 
 ```
-conda config --set auto_activate_base false
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+source ~/.zshrc
 ```
 
 # Docker Engine
