@@ -129,6 +129,31 @@ sudo dnf install curl cabextract xorg-x11-font-utils fontconfig
 sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
 ```
 
+## Cambria
+```
+sudo dnf install cabextract
+cd /tmp
+curl -o PowerPointViewer.exe -fsSL "https://archive.org/download/PowerPointViewer_201801/PowerPointViewer.exe"
+
+# Verify the download integrity
+EXPECTED="249473568eba7a1e4f95498acba594e0f42e6581add4dead70c1dfb908a09423"
+ACTUAL=$(sha256sum PowerPointViewer.exe | cut -d' ' -f1)
+if [ "$ACTUAL" = "$EXPECTED" ]; then
+    echo "Checksum verified successfully"
+else
+    echo "ERROR: Checksum mismatch. Expected: $EXPECTED"
+    echo "       Actual:   $ACTUAL"
+    exit 1
+fi
+
+cabextract -q PowerPointViewer.exe -F ppviewer.cab
+cabextract -q ppviewer.cab -F '*.TTF' -F '*.TTC'
+
+mkdir -p ~/.local/share/fonts/microsoft
+mv *.TTF *.TTC ~/.local/share/fonts/microsoft/
+fc-cache -f
+```
+
 # Instalar APPS
 
 ## Navegador Chrome
