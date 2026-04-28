@@ -162,3 +162,9 @@ sudo dnf install antigravity
 ```
 curl -fsSL https://opencode.ai/install | bash
 ```
+
+# Claude Code
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+```
