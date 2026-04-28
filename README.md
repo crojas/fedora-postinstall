@@ -187,6 +187,12 @@ sudo dnf install vlc gimp obs-studio shotcut
 ```
 flatpak install flathub org.onlyoffice.desktopeditors
 ```
+
+## Obsidian
+```
+flatpak install flathub md.obsidian.Obsidian
+```
+
 # Gaming
 
 Para configurar tu sistema para gaming en Fedora, consulta la documentación específica en [docs/gaming.md](docs/gaming.md).
