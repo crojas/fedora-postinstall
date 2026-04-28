@@ -182,6 +182,11 @@ sudo dnf install brave-browser
 sudo dnf install vlc gimp obs-studio shotcut
 ```
 
+## ONLYOFFICE
+
+```
+flatpak install flathub org.onlyoffice.desktopeditors
+```
 # Gaming
 
 Para configurar tu sistema para gaming en Fedora, consulta la documentación específica en [docs/gaming.md](docs/gaming.md).
