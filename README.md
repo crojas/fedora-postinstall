@@ -153,6 +153,10 @@ mkdir -p ~/.local/share/fonts/microsoft
 mv *.TTF *.TTC ~/.local/share/fonts/microsoft/
 fc-cache -f
 ```
+# Compresión
+```
+sudo dnf install p7zip p7zip-plugins zstd pigz pbzip2
+```
 
 # Instalar APPS
 
