@@ -33,6 +33,11 @@ gamemoded -t
 gamemoded -s
 ```
 
+# ProtonUp-Qt
+```
+flatpak install flathub net.davidotek.pupgui2
+```
+
 # Ver rendimiento en juegos
 ```
 sudo dnf install mangohud goverlay
