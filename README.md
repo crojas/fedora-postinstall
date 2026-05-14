@@ -126,7 +126,7 @@ sudo dnf install ffmpeg-libs libva libva-utils
 
 ```
 sudo dnf install curl cabextract xorg-x11-font-utils fontconfig
-sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
+sudo rpm -i --nodigest --nosignature https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
 ```
 
 ## Cambria
