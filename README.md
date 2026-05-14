@@ -1,4 +1,4 @@
-Script de postinstalación para Fedora 42/43 orientado a desarrollo, edición multimedia y gaming.
+Script de postinstalación para Fedora 43/44 orientado a desarrollo, edición multimedia y gaming.
 
 Configura automáticamente:
 
