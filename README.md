@@ -158,6 +158,11 @@ fc-cache -f
 sudo dnf install p7zip p7zip-plugins zstd pigz pbzip2
 ```
 
+# LaTeX
+```
+sudo dnf install texlive-scheme-full make git
+```
+
 # Instalar APPS
 
 ## Navegador Chrome
