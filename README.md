@@ -161,6 +161,7 @@ sudo dnf install p7zip p7zip-plugins zstd pigz pbzip2
 # LaTeX
 ```
 sudo dnf install texlive-scheme-full make git
+sudo dnf install google-roboto-fonts adobe-source-sans-pro-fonts texlive-fontawesome6
 ```
 
 # Instalar APPS
