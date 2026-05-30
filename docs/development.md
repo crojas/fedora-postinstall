@@ -173,3 +173,8 @@ curl -fsSL https://opencode.ai/install | bash
 ```
 curl -fsSL https://claude.ai/install.sh | bash
 ```
+
+# Codex CLI
+```
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+```
