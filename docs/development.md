@@ -1,3 +1,23 @@
+# Development tools
+
+```
+sudo dnf group install development-tools
+```
+
+## Librerias adicionales
+
+```
+sudo dnf install -y gcc gcc-c++ make cmake clang patch \
+  glibc-devel openssl-devel zlib-devel pkg-config \
+  readline-devel libffi-devel libyaml-devel \
+  gdbm-devel ncurses-devel
+```
+
+- **Compiladores y herramientas base**: gcc, gcc-c++, clang, make y patch.
+- **Librerías de desarrollo**: glibc-devel, openssl-devel, zlib-devel.
+- **Dependencias de lenguajes (Ruby/Python)**: readline-devel, libffi-devel, libyaml-devel, gdbm-devel, ncurses-devel.
+- **Utilidades de sistema**: pkg-config.
+
 # Install ghostty
 
 ```
@@ -41,26 +61,6 @@ plugins=(git docker zsh-autosuggestions)
 
 source ~/.zshrc
 ```
-
-# Development tools
-
-```
-sudo dnf group install development-tools
-```
-
-## Librerias adicionales
-
-```
-sudo dnf install -y gcc gcc-c++ make cmake clang patch \
-  glibc-devel openssl-devel zlib-devel pkg-config \
-  readline-devel libffi-devel libyaml-devel \
-  gdbm-devel ncurses-devel
-```
-
-- **Compiladores y herramientas base**: gcc, gcc-c++, clang, make y patch.
-- **Librerías de desarrollo**: glibc-devel, openssl-devel, zlib-devel.
-- **Dependencias de lenguajes (Ruby/Python)**: readline-devel, libffi-devel, libyaml-devel, gdbm-devel, ncurses-devel.
-- **Utilidades de sistema**: pkg-config.
 
 ## Rust
 
