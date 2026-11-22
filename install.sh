@@ -44,7 +44,9 @@ SKIPPED=()
 # id|descripción — se ejecutan en este orden. La función de cada paso es step_<id>.
 STEPS=(
   "dnf|Optimizar DNF y herramientas base"
+  "snapshots|Snapshots automáticos antes de cada dnf (Btrfs)"
   "upgrade|Actualizar el sistema"
+  "limits|Límites de inotify para editores y agentes"
   "repos|Repositorios RPM Fusion y Flathub"
   "firmware|Firmware (LVFS)"
   "nvidia|Drivers NVIDIA"
@@ -55,10 +57,13 @@ STEPS=(
   "latex|LaTeX completo"
   "chrome|Google Chrome"
   "brave|Brave"
-  "apps|VLC, GIMP, OBS Studio, Shotcut"
-  "office|ONLYOFFICE y Obsidian (Flatpak)"
-  "gaming|Steam, GameMode, MangoHud y ProtonUp-Qt"
+  "apps|VLC, GIMP, OBS Studio (+ captura de juegos), Shotcut"
+  "office|ONLYOFFICE (Flatpak)"
+  "gaming|Steam, Gamescope, GameMode, MangoHud y ProtonUp-Qt"
+  "ntsync|NTSYNC para juegos (Wine/GE-Proton)"
+  "protonge|GE-Proton (última versión)"
   "devtools|Herramientas de desarrollo"
+  "cli|CLI para agentes (gh, ripgrep, fd, fzf, jq, delta, lazygit, direnv, distrobox)"
   "zsh|Zsh + Oh My Zsh + Powerlevel10k"
   "ghostty|Terminal Ghostty"
   "rust|Rust"
@@ -71,6 +76,8 @@ STEPS=(
   "dbeaver|DBeaver (Flatpak)"
   "claude|Claude Code"
   "opencode|OpenCode"
+  "herdr|Herdr (multiplexor para agentes de IA)"
+  "obsidian|Obsidian (Flatpak)"
   "env|Variables de entorno (PATH, Go, NVM)"
 )
 
@@ -119,7 +126,11 @@ download() {
 # Escribe un archivo de sistema (p. ej. un .repo) con sudo.
 write_root_file() {
   log "\$ escribir $1"
-  printf '%s\n' "$2" | sudo tee "$1" >/dev/null 2>>"$LOG_FILE"
+  if ! sudo mkdir -p "$(dirname "$1")" 2>>"$LOG_FILE" ||
+    ! printf '%s\n' "$2" | sudo tee "$1" >/dev/null 2>>"$LOG_FILE"; then
+    LAST_ERROR="no se pudo escribir $1"
+    return 1
+  fi
 }
 
 # Instala paquetes con dnf y verifica que cada uno quedó instalado. Si alguno
@@ -196,6 +207,29 @@ step_dnf() {
     clean_requirements_on_remove=True best=False skip_if_unavailable=True keepcache=False
 }
 
+# Con snapper + el plugin "actions" de dnf5, cada instalación o actualización
+# crea un snapshot "pre" y otro "post" de /. Si un update rompe algo (p. ej. el
+# driver NVIDIA no compila para un kernel nuevo), se restaura desde Btrfs
+# Assistant. /home es otro subvolumen: restaurar / no toca tus archivos.
+step_snapshots() {
+  [[ $(findmnt -no FSTYPE / 2>/dev/null) == btrfs ]] || { skip "/ no está en Btrfs"; return; }
+  pkgs snapper libdnf5-plugin-actions btrfs-assistant || return 1
+  if [[ ! -f /etc/snapper/configs/root ]]; then
+    run sudo snapper -c root create-config / || { LAST_ERROR="snapper create-config falló"; return 1; }
+  fi
+  # Solo snapshots de dnf (sin los horarios) y se guardan los 10 últimos.
+  run sudo snapper -c root set-config NUMBER_LIMIT=10 NUMBER_LIMIT_IMPORTANT=5 TIMELINE_CREATE=no || return 1
+  # Ejemplo oficial de libdnf5-actions(8), con "-c number" para que la
+  # limpieza automática borre los snapshots viejos.
+  # shellcheck disable=SC2016  # ${pid} y ${tmp.*} los expande dnf, no bash
+  write_root_file /etc/dnf/libdnf5-plugins/actions.d/snapper.actions '# Generado por fedora-postinstall: snapshot de / antes y después de cada transacción de dnf.
+pre_transaction::::/usr/bin/sh -c echo\ "tmp.snapper_descr=$(ps\ -o\ command\ --no-headers\ -p\ '"'"'${pid}'"'"')"
+pre_transaction::::/usr/bin/sh -c echo\ "tmp.snapper_pre_number=$(snapper\ create\ -t\ pre\ -c\ number\ -p\ -d\ '"'"'${tmp.snapper_descr}'"'"')"
+post_transaction::::/usr/bin/sh -c [\ -n\ "${tmp.snapper_pre_number}"\ ]\ &&\ snapper\ create\ -t\ post\ -c\ number\ --pre-number\ "${tmp.snapper_pre_number}"\ -d\ "${tmp.snapper_descr}"\ ;\ echo\ tmp.snapper_pre_number\ ;\ echo\ tmp.snapper_descr' ||
+    { LAST_ERROR="no se pudo crear la acción de snapper para dnf"; return 1; }
+  run sudo systemctl enable --now snapper-cleanup.timer || true
+}
+
 step_upgrade() {
   run sudo dnf upgrade -y --refresh || return 1
   local k
@@ -203,6 +237,21 @@ step_upgrade() {
   if [[ -n $k && $k != "$(uname -r)" ]]; then
     note "Reinicia el equipo: se instaló un kernel nuevo ($k)."
   fi
+}
+
+# Cada editor, dev server o agente que vigila archivos usa "instancias" de
+# inotify y el kernel permite solo 128 por usuario: con varios agentes y sus
+# dev servers se agotan y el hot-reload deja de funcionar sin avisar.
+step_limits() {
+  local watches
+  watches=$(sysctl -n fs.inotify.max_user_watches 2>/dev/null || echo 0)
+  ((watches >= 524288)) || watches=524288
+  write_root_file /etc/sysctl.d/90-fedora-postinstall.conf "# Generado por fedora-postinstall: margen para editores, dev servers y agentes.
+fs.inotify.max_user_instances = 1024
+fs.inotify.max_user_watches = $watches" || return 1
+  run sudo sysctl -p /etc/sysctl.d/90-fedora-postinstall.conf ||
+    note "Los nuevos límites de inotify se aplican al reiniciar."
+  return 0
 }
 
 step_repos() {
@@ -334,11 +383,13 @@ step_brave() {
 
 step_apps() {
   ensure_rpmfusion || return 1
-  pkgs vlc gimp obs-studio shotcut
+  # obs-studio-plugin-vkcapture: captura juegos Vulkan/OpenGL directo (en
+  # Steam: "obs-gamecapture %command%"), sin la latencia de capturar pantalla.
+  pkgs vlc gimp obs-studio obs-studio-plugin-vkcapture shotcut
 }
 
 step_office() {
-  flatpaks org.onlyoffice.desktopeditors md.obsidian.Obsidian
+  flatpaks org.onlyoffice.desktopeditors
 }
 
 step_gaming() {
@@ -349,9 +400,65 @@ step_gaming() {
   else
     log "Steam solo existe para x86_64; se omite."
   fi
-  pkgs gamemode mangohud goverlay || rc=1
+  pkgs gamescope gamemode mangohud goverlay || rc=1
   flatpaks net.davidotek.pupgui2 || rc=1
   return $rc
+}
+
+# NTSYNC imita la sincronización de Windows en el kernel; GE-Proton lo usa
+# solo si el módulo está cargado. Fedora lo carga junto con el Steam de RPM
+# Fusion desde F44; este archivo lo deja cargado siempre.
+step_ntsync() {
+  modinfo ntsync &>/dev/null || { skip "el kernel no trae el módulo ntsync"; return; }
+  write_root_file /etc/modules-load.d/ntsync.conf "ntsync" || return 1
+  run sudo modprobe ntsync || { LAST_ERROR="no se pudo cargar el módulo ntsync"; return 1; }
+}
+
+# Última versión de GE-Proton, verificada con su sha512, en la carpeta que lee
+# el Steam nativo. Las versiones anteriores se conservan.
+step_protonge() {
+  # Steam (RPM Fusion) solo existe para x86_64, aunque GE-Proton tenga build ARM.
+  [[ $ARCH == x86_64 ]] || { skip "Steam no existe para $ARCH"; return; }
+  local dest="$HOME/.local/share/Steam/compatibilitytools.d"
+  local json tag tar_url sum_url tarball sums expected dir
+  command -v python3 >/dev/null || pkgs python3 || return 1
+  json=$(curl -fsSL --retry 3 https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest 2>>"$LOG_FILE") ||
+    { LAST_ERROR="no se pudo consultar la última versión en GitHub"; return 1; }
+  # Los nombres de los archivos cambian entre versiones (GE-Proton11-12-x86_64.tar.gz,
+  # antes GE-Proton10-25.tar.gz): se toman de la API en vez de armarlos a mano.
+  local pick='
+import json, sys
+d = json.load(sys.stdin)
+tag, arch = d["tag_name"], sys.argv[1]
+urls = {a["name"]: a["browser_download_url"] for a in d["assets"]}
+for name in (f"{tag}-{arch}.tar.gz", f"{tag}.tar.gz"):
+    if name in urls:
+        print(tag, urls[name], urls.get(name[:-len(".tar.gz")] + ".sha512sum", "-"))
+        break
+'
+  read -r tag tar_url sum_url < <(python3 -c "$pick" "$ARCH" <<<"$json" 2>>"$LOG_FILE")
+  [[ ${tag:-} == GE-Proton* && -n ${tar_url:-} && ${sum_url:--} != - ]] ||
+    { LAST_ERROR="no se encontró el archivo de GE-Proton para $ARCH en GitHub"; return 1; }
+  # El archivo se descomprime en una carpeta con su mismo nombre
+  # (GE-Proton11-12-x86_64), que puede no ser igual al tag.
+  dir=${tar_url##*/}
+  dir=${dir%.tar.gz}
+  if [[ -d $dest/$dir ]]; then
+    log "$dir ya está instalado."
+    return 0
+  fi
+  tarball=$(download "$tar_url") || return 1
+  sums=$(download "$sum_url") || return 1
+  expected=$(cut -d' ' -f1 "$sums")
+  if [[ $(sha512sum "$tarball" | cut -d' ' -f1) != "$expected" ]]; then
+    LAST_ERROR="el checksum de $tag no coincide"
+    return 1
+  fi
+  if ! mkdir -p "$dest" || ! run tar -xzf "$tarball" -C "$dest"; then
+    LAST_ERROR="no se pudo extraer $tag"
+    return 1
+  fi
+  note "GE-Proton listo: en Steam, Propiedades del juego > Compatibilidad > $tag (reinicia Steam si no aparece)."
 }
 
 step_devtools() {
@@ -359,6 +466,16 @@ step_devtools() {
   pkgs gcc gcc-c++ make cmake clang patch git pkgconf-pkg-config \
     glibc-devel openssl-devel zlib-devel \
     readline-devel libffi-devel libyaml-devel gdbm-devel ncurses-devel
+}
+
+step_cli() {
+  pkgs gh ripgrep fd-find fzf jq git-delta lazygit direnv distrobox || return 1
+  # delta como visor de diffs de git, solo si no tienes otro configurado.
+  if [[ -z $(git config --global --get core.pager 2>/dev/null) ]]; then
+    git config --global core.pager delta &&
+      git config --global interactive.diffFilter 'delta --color-only' &&
+      git config --global delta.navigate true
+  fi
 }
 
 step_zsh() {
@@ -496,6 +613,17 @@ step_opencode() {
   run bash "$f"
 }
 
+step_herdr() {
+  local f
+  f=$(download https://herdr.dev/install.sh) || return 1
+  # Deja el binario en ~/.local/bin (el paso "env" ya lo agrega al PATH).
+  run sh "$f"
+}
+
+step_obsidian() {
+  flatpaks md.obsidian.Obsidian
+}
+
 # Un único bloque en .bashrc y .zshrc con el PATH de todo lo instalado en el
 # home. Se reemplaza completo en cada ejecución, así nunca se duplica.
 step_env() {
@@ -513,6 +641,11 @@ done
 unset _d
 export PATH
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+# direnv (variables por proyecto) y fzf (Ctrl-R: buscar en el historial).
+if [ -n "${ZSH_VERSION:-}" ]; then _sh=zsh; else _sh=bash; fi
+command -v direnv >/dev/null 2>&1 && eval "$(direnv hook $_sh)"
+command -v fzf >/dev/null 2>&1 && eval "$(fzf --$_sh)"
+unset _sh
 # <<< fedora-postinstall <<<
 EOF
   )

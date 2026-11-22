@@ -18,6 +18,18 @@ sudo dnf install -y gcc gcc-c++ make cmake clang patch \
 - **Dependencias de lenguajes (Ruby/Python)**: readline-devel, libffi-devel, libyaml-devel, gdbm-devel, ncurses-devel.
 - **Utilidades de sistema**: pkg-config.
 
+# Herramientas de terminal para agentes
+
+```
+sudo dnf install gh ripgrep fd-find fzf jq git-delta lazygit direnv distrobox
+```
+
+- **gh**: PRs, issues y CI de GitHub desde la terminal (los agentes lo usan harto).
+- **ripgrep / fd / fzf / jq**: buscar en código y archivos, y manejar JSON, mucho más rápido.
+- **git-delta / lazygit**: revisar los diffs que generan los agentes.
+- **direnv**: variables de entorno por proyecto (`.envrc`).
+- **distrobox**: contenedores para aislar entornos o agentes.
+
 # Install ghostty
 
 ```
@@ -161,4 +173,16 @@ curl -fsSL https://opencode.ai/install | bash
 
 ```
 curl -fsSL https://claude.ai/install.sh | bash
+```
+
+# Herdr
+
+```
+curl -fsSL https://herdr.dev/install.sh | sh
+```
+
+# Obsidian
+
+```
+flatpak install flathub md.obsidian.Obsidian
 ```
