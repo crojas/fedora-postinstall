@@ -4,33 +4,16 @@ sudo dnf install steam
 ```
 
 # Instalar [GameMode](https://github.com/FeralInteractive/gamemode)
-```
-sudo dnf install meson systemd-devel pkg-config git dbus-devel inih-devel
-```
-## instalar: clonar el repositorio de git en home/user
+
+Está en los repositorios oficiales de Fedora, no hace falta compilarlo.
 
 ```
-git clone https://github.com/FeralInteractive/gamemode.git
-cd gamemode
-git checkout 1.8.2 # omit to build the master branch
-./bootstrap.sh
+sudo dnf install gamemode
 ```
 
-## Agrega tu usuario al grupo gamemode (un tema de permisos)
-```
-sudo usermod -aG gamemode $(whoami)
-```
-## Activar gamemode al inicio para tu usuario
-```
-sudo systemctl enable --now gamemoded.service
-```
 ## Test
 ```
 gamemoded -t
-```
-## Ver si se esta ejecutando
-```
-gamemoded -s
 ```
 
 # ProtonUp-Qt

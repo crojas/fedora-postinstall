@@ -101,8 +101,8 @@ source ~/.zshrc
 # Docker Engine
 
 ```
-sudo dnf -y install dnf-plugins-core
-sudo dnf-3 config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf -y install dnf5-plugins
+sudo dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo
 sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
@@ -128,38 +128,27 @@ sudo chmod +x /usr/local/bin/docker-compose
 flatpak install flathub io.dbeaver.DBeaverCommunity
 ```
 
-# Visual Studio Code
-
-```
-sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
-echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\nautorefresh=1\ntype=rpm-md\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" | sudo tee /etc/yum.repos.d/vscode.repo > /dev/null
-```
-
-```
-dnf check-update
-sudo dnf install code # or code-insiders
-```
-
 # Zed
 
 ```
 curl -f https://zed.dev/install.sh | sh
 ```
-# Antigravity
+
+# Cursor
 
 ```
-sudo tee /etc/yum.repos.d/antigravity.repo << EOL
-[antigravity-rpm]
-name=Antigravity RPM Repository
-baseurl=https://us-central1-yum.pkg.dev/projects/antigravity-auto-updater-dev/antigravity-rpm
+sudo tee /etc/yum.repos.d/cursor.repo << EOL
+[cursor]
+name=Cursor
+baseurl=https://downloads.cursor.com/yumrepo
 enabled=1
-gpgcheck=0
+gpgcheck=1
+gpgkey=https://downloads.cursor.com/keys/anysphere.asc
 EOL
 ```
 
 ```
-sudo dnf makecache
-sudo dnf install antigravity
+sudo dnf install cursor
 ```
 
 # OpenCode
@@ -172,9 +161,4 @@ curl -fsSL https://opencode.ai/install | bash
 
 ```
 curl -fsSL https://claude.ai/install.sh | bash
-```
-
-# Codex CLI
-```
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
 ```

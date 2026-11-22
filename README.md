@@ -1,15 +1,69 @@
-Script de postinstalación para Fedora 43/44 orientado a desarrollo, edición multimedia y gaming.
+# Fedora PostInstall
 
-Configura automáticamente:
+Script de postinstalación para **Fedora Workstation 43, 44 y 45** orientado a desarrollo, edición de foto/video y gaming. Lo corres una vez después de instalar Fedora y deja el equipo listo, sin preguntas.
 
-- Repositorios adicionales
-- Drivers de hardware
-- Codecs multimedia completos
-- Herramientas de edición de imágenes y video.
-- Herramientas de desarrollo.
-- Steam y optimizaciones para jugar.
+## Instalación
 
-Transforma una instalación básica en una estación de trabajo lista para uso profesional.
+```bash
+curl -fsSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash
+```
+
+- Córrelo con tu usuario (no con `sudo`): pide la contraseña de sudo **una sola vez** al inicio.
+- No hace preguntas: instala todo y al final muestra un resumen con lo que funcionó, lo que falló y lo que queda pendiente (reiniciar, cerrar sesión…).
+- Se puede volver a ejecutar sin problema: lo que ya está instalado lo deja igual o lo actualiza.
+- Todo el detalle queda en `~/fedora-postinstall-<fecha>.log`. Para verlo en vivo desde otra terminal: `tail -f ~/fedora-postinstall-*.log`.
+
+### Qué instala
+
+| Paso | Qué hace |
+|---|---|
+| `dnf` | Optimiza DNF (descargas en paralelo, mirror más rápido, etc.) |
+| `upgrade` | Actualiza el sistema |
+| `repos` | RPM Fusion (free, nonfree, tainted), Flathub y OpenH264 |
+| `firmware` | Firmware vía LVFS (`fwupdmgr`) |
+| `nvidia` | Drivers NVIDIA (solo si detecta una GPU NVIDIA) |
+| `multimedia` | FFmpeg completo, codecs, DVD y firmwares adicionales |
+| `hwaccel` | Aceleración de video por hardware para Intel/AMD |
+| `fonts` | Fuentes de Microsoft (Core Fonts + Cambria) |
+| `compression` | 7zip, zstd, pigz, pbzip2 |
+| `latex` | TeX Live completo + fuentes |
+| `chrome`, `brave` | Navegadores |
+| `apps` | VLC, GIMP, OBS Studio, Shotcut |
+| `office` | ONLYOFFICE y Obsidian (Flatpak) |
+| `gaming` | Steam, GameMode, MangoHud, GOverlay y ProtonUp-Qt |
+| `devtools` | Compiladores y librerías de desarrollo |
+| `zsh` | Zsh + Oh My Zsh + Powerlevel10k + autosuggestions, como shell por defecto |
+| `ghostty` | Terminal Ghostty |
+| `rust`, `go`, `node`, `uv` | Rust (rustup), Go (última versión), Node.js LTS (NVM), uv (Python) |
+| `docker` | Docker Engine + Compose, con tu usuario en el grupo `docker` |
+| `zed`, `cursor`, `dbeaver` | Editores |
+| `claude`, `opencode` | CLIs de IA |
+| `env` | Agrega al PATH todo lo anterior en `.bashrc` y `.zshrc` |
+
+### Opciones
+
+```bash
+# Ver los pasos disponibles
+curl -fsSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash -s -- --list
+
+# Todo menos LaTeX
+curl -fsSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash -s -- --skip latex
+
+# Solo algunos pasos
+curl -fsSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash -s -- --only docker,node
+```
+
+Si algún paso falla, el resumen final muestra el comando exacto para reintentar solo esos pasos.
+
+### Después de instalar
+
+1. Reinicia el equipo (kernel nuevo, firmware o drivers NVIDIA).
+2. Con **Secure Boot** activo y GPU NVIDIA, el resumen te indica cómo registrar la llave de `akmods` para que el driver cargue.
+3. Al abrir la terminal por primera vez, Powerlevel10k te ofrecerá configurar el prompt.
+
+## Instalación manual
+
+Los mismos pasos, explicados uno a uno, por si quieres hacerlos a mano.
 
 ## Índice
 
@@ -210,19 +264,3 @@ Para configurar tu sistema para gaming en Fedora, consulta la documentación esp
 # Desarrollo
 
 Para configurar tu sistema para desarrollo en Fedora, consulta la documentación específica en [docs/development.md](docs/development.md).
-
-# Instalar script de postinstall
-
-```bash
-curl -sSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh -o install.sh
-chmod +x install.sh
-./install.sh
-```
-
-O ejecutar directamente:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash
-```
-
-El script te permitirá seleccionar qué componentes instalar de forma interactiva.

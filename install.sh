@@ -1,386 +1,687 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Fedora PostInstall
+# ------------------
+# Deja una instalación recién hecha de Fedora Workstation lista para
+# desarrollo, edición de foto/video y gaming, sin hacer preguntas.
+#
+#   curl -fsSL https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh | bash
+#
+# Se puede volver a ejecutar cuantas veces quieras: cada paso detecta lo que ya
+# está hecho y solo instala o actualiza lo que falta.
+#
+# Todo vive dentro de funciones y recién se ejecuta en la última línea
+# (main "$@"). Con `curl | bash` eso garantiza que bash leyó el archivo completo
+# antes de hacer nada: una descarga cortada no deja una instalación a medias.
 
-set -e
+set -uo pipefail
 
-VERDE='\033[0;32m'
-AMARILLO='\033[1;33m'
-AZUL='\033[0;34m'
-ROJO='\033[0;31m'
-NC='\033[0m'
+readonly REPO_RAW="https://raw.githubusercontent.com/crojas/fedora-postinstall/main/install.sh"
+readonly MIN_FEDORA=43            # Últimas 3 versiones: 43, 44 y 45.
+readonly MAX_TESTED_FEDORA=45
+readonly NVM_VERSION="v0.40.4"
+readonly MSFONTS_RPM="https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm"
+readonly PPTVIEWER_URL="https://archive.org/download/PowerPointViewer_201801/PowerPointViewer.exe"
+readonly PPTVIEWER_SHA256="249473568eba7a1e4f95498acba594e0f42e6581add4dead70c1dfb908a09423"
 
-LOG_FILE="/var/log/fedora-postinstall.log"
+LOG_FILE="$HOME/fedora-postinstall-$(date +%Y%m%d-%H%M%S).log"
+ARCH="$(uname -m)"
+USER_NAME="$(id -un)"
+FEDORA_VERSION=""
+WORK_DIR=""
+BG_PIDS=()
+GPU_INFO=""
+SKIP_REASON=""
+LAST_ERROR=""
+ONLY=""
+SKIP=""
+NOTES=()
+OK=()
+FAILED=()
+FAILED_IDS=()
+SKIPPED=()
 
-log() {
-    echo -e "$1" | tee -a "$LOG_FILE"
+# id|descripción — se ejecutan en este orden. La función de cada paso es step_<id>.
+STEPS=(
+  "dnf|Optimizar DNF y herramientas base"
+  "upgrade|Actualizar el sistema"
+  "repos|Repositorios RPM Fusion y Flathub"
+  "firmware|Firmware (LVFS)"
+  "nvidia|Drivers NVIDIA"
+  "multimedia|Codecs multimedia"
+  "hwaccel|Aceleración de video por hardware"
+  "fonts|Fuentes de Microsoft"
+  "compression|Herramientas de compresión"
+  "latex|LaTeX completo"
+  "chrome|Google Chrome"
+  "brave|Brave"
+  "apps|VLC, GIMP, OBS Studio, Shotcut"
+  "office|ONLYOFFICE y Obsidian (Flatpak)"
+  "gaming|Steam, GameMode, MangoHud y ProtonUp-Qt"
+  "devtools|Herramientas de desarrollo"
+  "zsh|Zsh + Oh My Zsh + Powerlevel10k"
+  "ghostty|Terminal Ghostty"
+  "rust|Rust"
+  "go|Go"
+  "node|Node.js LTS (NVM)"
+  "uv|uv (Python)"
+  "docker|Docker"
+  "zed|Zed"
+  "cursor|Cursor"
+  "dbeaver|DBeaver (Flatpak)"
+  "claude|Claude Code"
+  "opencode|OpenCode"
+  "env|Variables de entorno (PATH, Go, NVM)"
+)
+
+if [[ -t 1 ]]; then
+  C_RESET=$'\e[0m' C_BOLD=$'\e[1m' C_DIM=$'\e[2m'
+  C_GREEN=$'\e[32m' C_RED=$'\e[31m' C_YELLOW=$'\e[33m' C_BLUE=$'\e[34m'
+else
+  C_RESET="" C_BOLD="" C_DIM="" C_GREEN="" C_RED="" C_YELLOW="" C_BLUE=""
+fi
+
+# ─── Utilidades ───────────────────────────────────────────────────────────────
+
+say()  { printf '%s\n' "$*"; }
+die()  { printf '%sError:%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
+log()  { printf '%s\n' "$*" >>"$LOG_FILE"; }
+skip() { SKIP_REASON="$1"; return 99; }
+
+# Agrega una tarea pendiente al resumen final (sin duplicados).
+note() {
+  local n
+  for n in "${NOTES[@]}"; do [[ $n == "$1" ]] && return 0; done
+  NOTES+=("$1")
 }
 
-banner() {
-    clear
-    echo -e "${AZUL}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${AZUL}║${NC}     Fedora PostInstall - Configuración Automática        ${AZUL}║${NC}"
-    echo -e "${AZUL}║${NC}                                                          ${AZUL}║${NC}"
-    echo -e "${AZUL}║${NC}  Transforma tu Fedora en estación de trabajo           ${AZUL}║${NC}"
-    echo -e "${AZUL}╚══════════════════════════════════════════════════════════╝${NC}"
-    echo ""
+# Ejecuta un comando sin acceso al teclado y con su salida solo en el log.
+# Si algo intentara preguntar, falla en vez de quedarse colgado esperando.
+run() {
+  log "\$ $*"
+  "$@" </dev/null >>"$LOG_FILE" 2>&1
 }
 
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        if ! command -v sudo &> /dev/null; then
-            log "${ROJO}Error: sudo no está instalado${NC}"
-            exit 1
-        fi
-    fi
+# Descarga una URL a un archivo temporal e imprime su ruta. Los instaladores
+# oficiales (rustup, uv, nvm…) se bajan primero y se ejecutan después, en vez
+# de `curl | sh`, para detectar una descarga fallida antes de ejecutar nada.
+download() {
+  local file
+  file=$(mktemp -p "$WORK_DIR") || return 1
+  log "\$ curl $1"
+  curl -fsSL --retry 3 --connect-timeout 20 -o "$file" "$1" >>"$LOG_FILE" 2>&1 || {
+    LAST_ERROR="no se pudo descargar $1"
+    return 1
+  }
+  printf '%s' "$file"
 }
 
-check_fedora() {
-    if [[ ! -f /etc/fedora-release ]]; then
-        log "${ROJO}Error: Este script está diseñado solo para Fedora${NC}"
-        exit 1
-    fi
+# Escribe un archivo de sistema (p. ej. un .repo) con sudo.
+write_root_file() {
+  log "\$ escribir $1"
+  printf '%s\n' "$2" | sudo tee "$1" >/dev/null 2>>"$LOG_FILE"
 }
 
-ask_yes_no() {
-    local prompt="$1"
-    local default="${2:-n}"
-    local yn
-    
-    if [[ "$default" == "y" ]]; then
-        while true; do
-            read -p "$prompt [Y/n]: " yn
-            case $yn in
-                [Yy]*|"") return 0 ;;
-                [Nn]*) return 1 ;;
-                *) echo "Responde y o n" ;;
-            esac
-        done
-    else
-        while true; do
-            read -p "$prompt [y/N]: " yn
-            case $yn in
-                [Yy]*) return 0 ;;
-                [Nn]*|"") return 1 ;;
-                *) echo "Responde y o n" ;;
-            esac
-        done
-    fi
+# Instala paquetes con dnf y verifica que cada uno quedó instalado. Si alguno
+# no existe en los repos, el resto se instala igual y el paso se marca con
+# error indicando cuál faltó. Las opciones (--allowerasing…) se pasan a dnf.
+pkgs() {
+  run sudo dnf install -y --skip-unavailable "$@" || { LAST_ERROR="dnf falló"; return 1; }
+  local p missing=()
+  for p in "$@"; do
+    [[ $p == -* ]] && continue
+    rpm -q --whatprovides "$p" &>/dev/null || missing+=("$p")
+  done
+  if ((${#missing[@]})); then
+    LAST_ERROR="no disponibles: ${missing[*]}"
+    log "!! $LAST_ERROR"
+    return 1
+  fi
 }
 
-run_cmd() {
-    local cmd="$1"
-    local desc="$2"
-    log "${AMARILLO}>> $desc${NC}"
-    log "   Comando: $cmd"
-    
-    if eval "$cmd" >> "$LOG_FILE" 2>&1; then
-        log "${VERDE}✓ Completado${NC}"
-        return 0
-    else
-        log "${ROJO}✗ Error en: $desc${NC}"
-        return 1
-    fi
+ensure_rpmfusion() {
+  local r
+  for r in free nonfree; do
+    rpm -q "rpmfusion-$r-release" &>/dev/null && continue
+    run sudo dnf install -y \
+      "https://download1.rpmfusion.org/$r/fedora/rpmfusion-$r-release-$FEDORA_VERSION.noarch.rpm" ||
+      { LAST_ERROR="no se pudo instalar RPM Fusion $r"; return 1; }
+  done
+  rpm -q rpmfusion-free-release-tainted rpmfusion-nonfree-release-tainted &>/dev/null ||
+    pkgs rpmfusion-free-release-tainted rpmfusion-nonfree-release-tainted
 }
 
-optimize_dnf() {
-    log ""
-    log "${AZUL}=== Optimizando DNF ===${NC}"
-    
-    local dnf_conf="/etc/dnf/dnf.conf"
-    local backup="$dnf_conf.bak.$(date +%Y%m%d%H%M%S)"
-    
-    if [[ -f "$dnf_conf" ]]; then
-        sudo cp "$dnf_conf" "$backup"
-        log "Backup creado: $backup"
-    fi
-    
-    cat | sudo tee "$dnf_conf" > /dev/null << 'EOF'
-[main]
-fastestmirror=True
-max_parallel_downloads=20
-gpgcheck=True
-installonly_limit=2
-clean_requirements_on_remove=True
-best=False
-skip_if_unavailable=True
-keepcache=False
+ensure_flathub() {
+  command -v flatpak >/dev/null || pkgs flatpak || return 1
+  run sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo &&
+    run sudo flatpak remote-modify --enable --no-filter flathub
+}
+
+flatpaks() {
+  ensure_flathub || return 1
+  run sudo flatpak install -y --noninteractive --or-update --system flathub "$@" ||
+    { LAST_ERROR="flatpak falló"; return 1; }
+}
+
+# Clona un repositorio o, si ya existe, lo actualiza.
+git_sync() {
+  if [[ -d $2/.git ]]; then
+    run git -C "$2" pull --ff-only
+  else
+    run git clone --depth=1 "$1" "$2"
+  fi
+}
+
+detect_gpus() {
+  [[ -n $GPU_INFO ]] && return 0
+  command -v lspci >/dev/null || pkgs pciutils
+  GPU_INFO=$(lspci 2>/dev/null | grep -E 'VGA|3D|Display' || true)
+  log "GPUs detectadas: ${GPU_INFO:-ninguna}"
+}
+
+newest_kernel() {
+  local kernels
+  # Si no hay kernel-core (p. ej. en un contenedor), rpm imprime un mensaje
+  # en stdout y sale con error: no hay nada que informar.
+  kernels=$(rpm -q kernel-core --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null) || return 0
+  sort -V <<<"$kernels" | tail -n1
+}
+
+# ─── Pasos ────────────────────────────────────────────────────────────────────
+
+step_dnf() {
+  pkgs dnf5-plugins curl git pciutils || return 1
+  run sudo dnf config-manager setopt \
+    max_parallel_downloads=20 fastestmirror=True installonly_limit=2 \
+    clean_requirements_on_remove=True best=False skip_if_unavailable=True keepcache=False
+}
+
+step_upgrade() {
+  run sudo dnf upgrade -y --refresh || return 1
+  local k
+  k=$(newest_kernel)
+  if [[ -n $k && $k != "$(uname -r)" ]]; then
+    note "Reinicia el equipo: se instaló un kernel nuevo ($k)."
+  fi
+}
+
+step_repos() {
+  ensure_rpmfusion || return 1
+  ensure_flathub || return 1
+  # Codec H.264 de Cisco: viene en un repo de Fedora que a veces está desactivado.
+  run sudo dnf config-manager setopt fedora-cisco-openh264.enabled=1
+}
+
+step_firmware() {
+  command -v fwupdmgr >/dev/null || { skip "fwupd no está instalado"; return; }
+  run sudo fwupdmgr refresh --force   # si falla, update lo informa igual
+  run sudo fwupdmgr update -y --no-reboot-check
+  case $? in
+    0) note "Reinicia el equipo para aplicar las actualizaciones de firmware." ;;
+    2) log "No hay actualizaciones de firmware." ;;
+    *) LAST_ERROR="fwupdmgr update falló"; return 1 ;;
+  esac
+}
+
+step_nvidia() {
+  detect_gpus
+  [[ $GPU_INFO == *NVIDIA* ]] || { skip "no hay GPU NVIDIA"; return; }
+  ensure_rpmfusion || return 1
+  pkgs akmod-nvidia xorg-x11-drv-nvidia-cuda || return 1
+  # Compila el módulo ya, para el kernel más nuevo; si falla, akmods lo
+  # vuelve a intentar solo al arrancar.
+  local k
+  k=$(newest_kernel)
+  [[ -n $k ]] && run sudo akmods --force --kernels "$k"
+  note "Reinicia el equipo para cargar el driver NVIDIA."
+  if [[ $(mokutil --sb-state 2>/dev/null) == *enabled* ]]; then
+    note "Secure Boot está activo: para que el driver NVIDIA cargue, ejecuta 'sudo mokutil --import /etc/pki/akmods/certs/public_key.der', elige una contraseña y, al reiniciar, entra a 'Enroll MOK' con ella."
+  fi
+  return 0
+}
+
+step_multimedia() {
+  ensure_rpmfusion || return 1
+  # Primero el ffmpeg completo de RPM Fusion: --allowerasing reemplaza
+  # ffmpeg-free y sus librerías (libswscale-free…). Si @multimedia va antes,
+  # instala esas librerías "free" y luego ffmpeg-libs choca con ellas.
+  pkgs --allowerasing ffmpeg ffmpeg-libs libva libva-utils libdvdcss || return 1
+  run sudo dnf install -y @multimedia --setopt=install_weak_deps=False \
+    --exclude=PackageKit-gstreamer-plugin || { LAST_ERROR="grupo multimedia"; return 1; }
+  run sudo dnf group install -y sound-and-video || { LAST_ERROR="grupo sound-and-video"; return 1; }
+  # Firmwares extra de rpmfusion-nonfree-tainted. Se listan primero y se
+  # instalan con todos los repos activos: con `--repo=...` dnf no ve las
+  # dependencias que están en Fedora (bluez, usbutils…) y falla.
+  local firmwares
+  firmwares=$(dnf repoquery -q --repo=rpmfusion-nonfree-tainted --qf '%{name}\n' '*-firmware' 2>>"$LOG_FILE" | sort -u)
+  [[ -n $firmwares ]] || { LAST_ERROR="no se pudo listar los firmwares de rpmfusion-nonfree-tainted"; return 1; }
+  # shellcheck disable=SC2086  # una palabra por paquete
+  pkgs $firmwares
+}
+
+step_hwaccel() {
+  detect_gpus
+  local done_any=0
+  if [[ $GPU_INFO == *Intel* ]]; then
+    pkgs intel-media-driver || return 1
+    done_any=1
+  fi
+  if [[ $GPU_INFO == *"AMD/ATI"* || $GPU_INFO == *Radeon* ]]; then
+    ensure_rpmfusion || return 1
+    # Los drivers de Fedora no traen H.264/H.265; los de RPM Fusion sí.
+    pkgs --allowerasing mesa-va-drivers-freeworld || return 1
+    done_any=1
+  fi
+  ((done_any)) || { skip "no hay GPU Intel/AMD que configurar"; return; }
+}
+
+step_fonts() {
+  pkgs curl cabextract xorg-x11-font-utils fontconfig || return 1
+  if ! rpm -q msttcore-fonts-installer &>/dev/null; then
+    # El RPM no trae firma ni digest: dnf lo rechaza aun con --nogpgcheck,
+    # así que se instala con rpm (las dependencias ya las puso dnf arriba).
+    local f
+    f=$(download "$MSFONTS_RPM") || return 1
+    run sudo rpm -i --nodigest --nosignature "$f" ||
+      { LAST_ERROR="msttcore-fonts-installer"; return 1; }
+  fi
+  install_cambria
+}
+
+# Cambria y otras fuentes de Office que no vienen en msttcore.
+install_cambria() {
+  local dest="$HOME/.local/share/fonts/microsoft"
+  [[ -f $dest/.fedora-postinstall ]] && return 0
+  local exe dir
+  exe=$(download "$PPTVIEWER_URL") || return 1
+  if [[ $(sha256sum "$exe" | cut -d' ' -f1) != "$PPTVIEWER_SHA256" ]]; then
+    LAST_ERROR="el checksum de PowerPointViewer.exe no coincide"
+    return 1
+  fi
+  dir=$(mktemp -d -p "$WORK_DIR") || return 1
+  if ! run cabextract -q -d "$dir" -F ppviewer.cab "$exe" ||
+    ! run cabextract -q -d "$dir" -F '*.TTF' -F '*.TTC' "$dir/ppviewer.cab"; then
+    LAST_ERROR="no se pudo extraer PowerPointViewer.exe"
+    return 1
+  fi
+  mkdir -p "$dest" &&
+    find "$dir" -maxdepth 1 -iname '*.tt[fc]' -exec mv -t "$dest" {} + &&
+    run fc-cache -f &&
+    touch "$dest/.fedora-postinstall"
+}
+
+step_compression() {
+  pkgs p7zip p7zip-plugins zstd pigz pbzip2
+}
+
+step_latex() {
+  pkgs texlive-scheme-full make google-roboto-fonts adobe-source-sans-pro-fonts texlive-fontawesome6
+}
+
+step_chrome() {
+  [[ $ARCH == x86_64 ]] || { skip "Chrome no existe para $ARCH"; return; }
+  pkgs fedora-workstation-repositories || return 1
+  run sudo dnf config-manager setopt google-chrome.enabled=1 || return 1
+  pkgs google-chrome-stable
+}
+
+step_brave() {
+  run sudo dnf config-manager addrepo --overwrite \
+    --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo ||
+    { LAST_ERROR="no se pudo agregar el repo de Brave"; return 1; }
+  pkgs brave-browser
+}
+
+step_apps() {
+  ensure_rpmfusion || return 1
+  pkgs vlc gimp obs-studio shotcut
+}
+
+step_office() {
+  flatpaks org.onlyoffice.desktopeditors md.obsidian.Obsidian
+}
+
+step_gaming() {
+  local rc=0
+  ensure_rpmfusion || return 1
+  if [[ $ARCH == x86_64 ]]; then
+    pkgs steam || rc=1
+  else
+    log "Steam solo existe para x86_64; se omite."
+  fi
+  pkgs gamemode mangohud goverlay || rc=1
+  flatpaks net.davidotek.pupgui2 || rc=1
+  return $rc
+}
+
+step_devtools() {
+  run sudo dnf group install -y development-tools || { LAST_ERROR="grupo development-tools"; return 1; }
+  pkgs gcc gcc-c++ make cmake clang patch git pkgconf-pkg-config \
+    glibc-devel openssl-devel zlib-devel \
+    readline-devel libffi-devel libyaml-devel gdbm-devel ncurses-devel
+}
+
+step_zsh() {
+  pkgs zsh git || return 1
+  if [[ ! -d $HOME/.oh-my-zsh ]]; then
+    local f
+    f=$(download https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh) || return 1
+    # --unattended: no cambia la shell ni abre zsh al terminar (eso colgaba
+    # al script anterior).
+    run env RUNZSH=no CHSH=no sh "$f" --unattended || { LAST_ERROR="instalador de Oh My Zsh"; return 1; }
+  fi
+  local custom="$HOME/.oh-my-zsh/custom"
+  git_sync https://github.com/romkatv/powerlevel10k.git "$custom/themes/powerlevel10k" || return 1
+  git_sync https://github.com/zsh-users/zsh-autosuggestions "$custom/plugins/zsh-autosuggestions" || return 1
+  if [[ -f $HOME/.zshrc ]]; then
+    sed -i -e 's|^ZSH_THEME=.*|ZSH_THEME="powerlevel10k/powerlevel10k"|' \
+      -e 's|^plugins=(.*)|plugins=(git docker zsh-autosuggestions)|' "$HOME/.zshrc"
+  fi
+  # La ruta tiene que ser la que figura en /etc/shells (/usr/bin/zsh); con
+  # /usr/sbin/zsh, que en Fedora 42+ es la misma, GDM puede rechazar el login.
+  local zsh_path
+  zsh_path=$(grep -m1 -E '^/usr/bin/zsh$|^/bin/zsh$' /etc/shells) || zsh_path=/usr/bin/zsh
+  if [[ $(getent passwd "$USER_NAME" | cut -d: -f7) != "$zsh_path" ]]; then
+    run sudo usermod --shell "$zsh_path" "$USER_NAME" || return 1
+    note "Cierra sesión y vuelve a entrar para usar Zsh (la primera vez Powerlevel10k te ofrecerá configurarlo)."
+  fi
+}
+
+step_ghostty() {
+  run sudo dnf copr enable -y scottames/ghostty ||
+    { LAST_ERROR="el COPR de Ghostty no tiene paquetes para Fedora $FEDORA_VERSION"; return 1; }
+  pkgs ghostty
+}
+
+step_rust() {
+  if [[ -x $HOME/.cargo/bin/rustup ]]; then
+    run "$HOME/.cargo/bin/rustup" update
+    return
+  fi
+  local f
+  f=$(download https://sh.rustup.rs) || return 1
+  # El PATH lo agrega el paso "env".
+  run sh "$f" -y --no-modify-path
+}
+
+step_go() {
+  local arch latest f
+  case $ARCH in
+    x86_64) arch=amd64 ;;
+    aarch64) arch=arm64 ;;
+    *) skip "arquitectura $ARCH no soportada"; return ;;
+  esac
+  latest=$(curl -fsSL --retry 3 'https://go.dev/VERSION?m=text' 2>>"$LOG_FILE") ||
+    { LAST_ERROR="no se pudo consultar la última versión en go.dev"; return 1; }
+  latest=${latest%%$'\n'*}
+  [[ $latest == go1.* ]] || { LAST_ERROR="respuesta inesperada de go.dev: $latest"; return 1; }
+  if [[ -x /usr/local/go/bin/go && $(/usr/local/go/bin/go env GOVERSION 2>/dev/null) == "$latest" ]]; then
+    log "$latest ya está instalado."
+    return 0
+  fi
+  f=$(download "https://go.dev/dl/$latest.linux-$arch.tar.gz") || return 1
+  run sudo rm -rf /usr/local/go && run sudo tar -C /usr/local -xzf "$f"
+}
+
+step_node() {
+  if [[ ! -s $HOME/.nvm/nvm.sh ]]; then
+    local f
+    f=$(download "https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh") || return 1
+    # PROFILE=/dev/null: no toca .bashrc/.zshrc; el paso "env" carga NVM.
+    run env PROFILE=/dev/null bash "$f" || { LAST_ERROR="instalador de NVM"; return 1; }
+  fi
+  # shellcheck disable=SC2016  # $HOME se expande dentro del bash hijo
+  run bash -c 'source "$HOME/.nvm/nvm.sh" && nvm install --lts && nvm alias default "lts/*"'
+}
+
+step_uv() {
+  if [[ -x $HOME/.local/bin/uv ]]; then
+    run "$HOME/.local/bin/uv" self update
+    return
+  fi
+  local f
+  f=$(download https://astral.sh/uv/install.sh) || return 1
+  run env UV_NO_MODIFY_PATH=1 sh "$f"
+}
+
+step_docker() {
+  local probe="https://download.docker.com/linux/fedora/$FEDORA_VERSION/$ARCH/stable/repodata/repomd.xml"
+  if rpm -q docker-ce &>/dev/null || curl -fsIL --retry 2 -o /dev/null "$probe" 2>/dev/null; then
+    run sudo dnf config-manager addrepo --overwrite \
+      --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo ||
+      { LAST_ERROR="no se pudo agregar el repo de Docker"; return 1; }
+    pkgs --allowerasing docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || return 1
+  else
+    # Docker suele tardar unas semanas en publicar paquetes para una Fedora nueva.
+    pkgs moby-engine docker-compose || return 1
+    note "Docker aún no publica paquetes para Fedora $FEDORA_VERSION: quedó instalado moby-engine (el Docker de Fedora). Vuelve a ejecutar el script más adelante para pasar a docker-ce."
+  fi
+  getent group docker >/dev/null || run sudo groupadd docker
+  run sudo systemctl enable --now docker || { LAST_ERROR="no se pudo iniciar el servicio docker"; return 1; }
+  if [[ " $(id -nG "$USER_NAME") " != *" docker "* ]]; then
+    run sudo usermod -aG docker "$USER_NAME" || return 1
+    note "Cierra sesión y vuelve a entrar para usar docker sin sudo."
+  fi
+}
+
+step_zed() {
+  local f
+  f=$(download https://zed.dev/install.sh) || return 1
+  run sh "$f"
+}
+
+step_cursor() {
+  write_root_file /etc/yum.repos.d/cursor.repo "[cursor]
+name=Cursor
+baseurl=https://downloads.cursor.com/yumrepo
+enabled=1
+gpgcheck=1
+gpgkey=https://downloads.cursor.com/keys/anysphere.asc" || { LAST_ERROR="no se pudo crear el repo de Cursor"; return 1; }
+  pkgs cursor
+}
+
+step_dbeaver() {
+  flatpaks io.dbeaver.DBeaverCommunity
+}
+
+step_claude() {
+  local f
+  f=$(download https://claude.ai/install.sh) || return 1
+  run bash "$f"
+}
+
+step_opencode() {
+  local f
+  f=$(download https://opencode.ai/install) || return 1
+  run bash "$f"
+}
+
+# Un único bloque en .bashrc y .zshrc con el PATH de todo lo instalado en el
+# home. Se reemplaza completo en cada ejecución, así nunca se duplica.
+step_env() {
+  local f block
+  block=$(
+    cat <<'EOF'
+# >>> fedora-postinstall >>>
+# Generado por fedora-postinstall: se reescribe en cada ejecución.
+export GOROOT=/usr/local/go
+export GOPATH="$HOME/go"
+export NVM_DIR="$HOME/.nvm"
+for _d in "$HOME/.local/bin" "$HOME/.cargo/bin" "$GOPATH/bin" "$GOROOT/bin" "$HOME/.opencode/bin"; do
+  case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH" ;; esac
+done
+unset _d
+export PATH
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+# <<< fedora-postinstall <<<
 EOF
-    
-    log "${VERDE}✓ DNF optimizado${NC}"
+  )
+  for f in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [[ -f $f ]] || continue
+    sed -i '/^# >>> fedora-postinstall >>>$/,/^# <<< fedora-postinstall <<<$/d' "$f" || return 1
+    printf '%s\n' "$block" >>"$f"
+  done
 }
 
-add_repos() {
-    log ""
-    log "${AZUL}=== Agregando repositorios RPMFusion ===${NC}"
-    
-    run_cmd "sudo dnf install -y https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-\$(rpm -E %fedora).noarch.rpm" "RPMFusion Free"
-    run_cmd "sudo dnf install -y https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-\$(rpm -E %fedora).noarch.rpm" "RPMFusion Non-Free"
-    run_cmd "sudo dnf install -y rpmfusion-free-release-tainted rpmfusion-nonfree-release-tainted" "RPMFusion Tainted"
-    run_cmd "sudo dnf makecache" "Actualizar cache"
-    
-    log "${VERDE}✓ Repositorios agregados${NC}"
+# ─── Orquestación ─────────────────────────────────────────────────────────────
+
+usage() {
+  cat <<EOF
+Fedora PostInstall: instala todo sin preguntar.
+
+Uso:
+  curl -fsSL $REPO_RAW | bash
+  curl -fsSL $REPO_RAW | bash -s -- [opciones]
+
+Opciones:
+  --list          Muestra los pasos disponibles.
+  --only a,b,c    Ejecuta solo esos pasos.
+  --skip a,b,c    Ejecuta todo menos esos pasos.
+  -h, --help      Muestra esta ayuda.
+EOF
 }
 
-update_firmware() {
-    log ""
-    log "${AZUL}=== Actualizando firmware via LVFS ===${NC}"
-    
-    run_cmd "sudo fwupdmgr refresh --force" "Refrescar LVFS" || true
-    run_cmd "sudo fwupdmgr get-devices" "Listar dispositivos" || true
-    run_cmd "sudo fwupdmgr get-updates" "Buscar actualizaciones" || true
-    run_cmd "sudo fwupdmgr update" "Actualizar firmware" || true
-    
-    log "${AMARILLO}⚠ Reinicia el sistema después de actualizar firmware${NC}"
+list_steps() {
+  local s
+  for s in "${STEPS[@]}"; do printf '  %-12s %s\n' "${s%%|*}" "${s#*|}"; done
 }
 
-install_nvidia() {
-    log ""
-    log "${AZUL}=== Instalando drivers NVIDIA ===${NC}"
-    
-    run_cmd "sudo dnf upgrade --refresh" "Actualizar sistema"
-    run_cmd "sudo dnf install -y akmod-nvidia xorg-x11-drv-nvidia-cuda" "Drivers NVIDIA"
-    
-    log "${AMARILLO}⚠ Reinicia el sistema después de instalar drivers NVIDIA${NC}"
+valid_ids() {
+  local id s found
+  for id in ${1//,/ }; do
+    found=0
+    for s in "${STEPS[@]}"; do [[ ${s%%|*} == "$id" ]] && found=1; done
+    ((found)) || die "Paso desconocido: '$id'. Usa --list para ver los pasos."
+  done
 }
 
-install_multimedia() {
-    log ""
-    log "${AZUL}=== Configurando Multimedia ===${NC}"
-    
-    run_cmd "sudo dnf swap ffmpeg-free ffmpeg --allowerasing" "FFmpeg completo"
-    run_cmd "sudo dnf install -y @multimedia --setopt='install_weak_deps=False' --exclude=PackageKit-gstreamer-plugin" "Grupo Multimedia"
-    run_cmd "sudo dnf group install -y sound-and-video" "Sound and Video"
-    run_cmd "sudo dnf install -y libdvdcss" "LibDVDCSS"
-    run_cmd "sudo dnf --repo=rpmfusion-nonfree-tainted install -y '*-firmware'" "Firmwares adicionales"
-    run_cmd "sudo dnf install -y ffmpeg-libs libva libva-utils" "Librerías video"
-    
-    log "${VERDE}✓ Multimedia configurado${NC}"
+parse_args() {
+  while (($#)); do
+    case $1 in
+      --only) [[ $# -ge 2 ]] || die "--only necesita una lista de pasos"; ONLY=$2; shift 2 ;;
+      --only=*) ONLY=${1#*=}; shift ;;
+      --skip) [[ $# -ge 2 ]] || die "--skip necesita una lista de pasos"; SKIP=$2; shift 2 ;;
+      --skip=*) SKIP=${1#*=}; shift ;;
+      --list) list_steps; exit 0 ;;
+      -h | --help) usage; exit 0 ;;
+      *) die "Opción desconocida: $1 (usa --help)" ;;
+    esac
+  done
+  valid_ids "$ONLY"
+  valid_ids "$SKIP"
 }
 
-install_apps() {
-    log ""
-    log "${AZUL}=== Instalando aplicaciones ===${NC}"
-    
-    run_cmd "sudo dnf install -y vlc gimp obs-studio shotcut" "Apps multimedia"
-    
-    log "${VERDE}✓ Aplicaciones instaladas${NC}"
+selected() {
+  local id=$1
+  [[ ",$SKIP," == *",$id,"* ]] && return 1
+  [[ -z $ONLY || $id == env ]] && return 0   # env siempre, salvo --skip env
+  [[ ",$ONLY," == *",$id,"* ]]
 }
 
-install_fonts() {
-    log ""
-    log "${AZUL}=== Instalando fuentes Windows ===${NC}"
-    
-    run_cmd "sudo dnf install -y curl cabextract xorg-x11-font-utils fontconfig" "Dependencias fuentes"
-    run_cmd "sudo rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm" "Microsoft Core Fonts"
-    
-    log "${VERDE}✓ Fuentes instaladas${NC}"
+cleanup() {
+  local pid
+  for pid in "${BG_PIDS[@]}"; do kill "$pid" 2>/dev/null; done
+  [[ -n $WORK_DIR ]] && rm -rf "$WORK_DIR"
 }
 
-install_browsers() {
-    log ""
-    log "${AZUL}=== Instalando navegadores ===${NC}"
-    
-    run_cmd "sudo dnf install -y dnf-plugins-core fedora-workstation-repositories" "Plugins DNF"
-    run_cmd "sudo dnf config-manager setopt google-chrome.enabled=1" "Habilitar Chrome"
-    run_cmd "sudo dnf install -y google-chrome-stable" "Chrome"
-    
-    run_cmd "sudo dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo" "Repo Brave"
-    run_cmd "sudo dnf install -y brave-browser" "Brave"
-    
-    log "${VERDE}✓ Navegadores instalados${NC}"
+preflight() {
+  [[ $EUID -ne 0 ]] || die "No lo ejecutes como root ni con sudo: córrelo con tu usuario, pedirá sudo cuando haga falta."
+  local distro
+  # shellcheck disable=SC1091
+  distro=$(. /etc/os-release 2>/dev/null && printf '%s' "${ID:-}")
+  [[ $distro == fedora ]] || die "Este script es solo para Fedora."
+  [[ ! -e /run/ostree-booted ]] || die "Fedora Atomic (Silverblue, Kinoite…) no está soportado: ahí se instala con rpm-ostree."
+  FEDORA_VERSION=$(rpm -E %fedora)
+  [[ $FEDORA_VERSION =~ ^[0-9]+$ ]] || die "No se pudo detectar la versión de Fedora."
+  ((FEDORA_VERSION >= MIN_FEDORA)) || die "Fedora $FEDORA_VERSION ya no está soportada (mínimo $MIN_FEDORA). Actualiza Fedora primero."
+  command -v sudo >/dev/null || die "sudo no está instalado."
+  command -v curl >/dev/null || die "curl no está instalado."
+  curl -fsS --max-time 20 -o /dev/null https://fedoraproject.org || die "Sin conexión a internet."
+
+  : >"$LOG_FILE" || die "No se pudo crear el log en $LOG_FILE"
+  WORK_DIR=$(mktemp -d) || die "No se pudo crear un directorio temporal."
+  trap cleanup EXIT
+
+  if ! sudo -n true 2>/dev/null; then
+    say "Se necesita tu contraseña de sudo (solo esta vez):"
+  fi
+  sudo -v || die "No se pudo obtener permisos de sudo."
+  # Mantiene sudo activo mientras dure la instalación (puede tardar bastante).
+  (while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 50; done) >/dev/null 2>&1 &
+  BG_PIDS+=("$!")
+  # Evita que el equipo se suspenda a mitad de la instalación.
+  if command -v systemd-inhibit >/dev/null; then
+    systemd-inhibit --what=idle:sleep --who=fedora-postinstall --why="Instalando paquetes" \
+      sleep infinity >/dev/null 2>&1 &
+    BG_PIDS+=("$!")
+  fi
 }
 
-install_gaming() {
-    log ""
-    log "${AZUL}=== Configurando Gaming ===${NC}"
-    
-    run_cmd "sudo dnf install -y steam" "Steam"
-    run_cmd "sudo dnf install -y mangohud goverlay" "MangoHud"
-    
-    log "${AMARILLO}⚠ GameMode requiere compilación manual. Ver docs/gaming.md${NC}"
-    
-    log "${VERDE}✓ Gaming configurado${NC}"
+run_step() {
+  local id=$1 desc=$2 rc start=$SECONDS
+  SKIP_REASON="" LAST_ERROR=""
+  printf '%s▸%s %s … ' "$C_BLUE" "$C_RESET" "$desc"
+  log ""
+  log "===== [$id] $desc ====="
+  "step_$id"
+  rc=$?
+  case $rc in
+    0)
+      printf '%s✓%s %s(%ss)%s\n' "$C_GREEN" "$C_RESET" "$C_DIM" "$((SECONDS - start))" "$C_RESET"
+      OK+=("$id")
+      ;;
+    99)
+      printf '%s– omitido: %s%s\n' "$C_DIM" "$SKIP_REASON" "$C_RESET"
+      SKIPPED+=("$desc: $SKIP_REASON")
+      ;;
+    *)
+      printf '%s✗ falló%s %s\n' "$C_RED" "$C_RESET" "${LAST_ERROR:+($LAST_ERROR)}"
+      FAILED+=("$desc${LAST_ERROR:+ — $LAST_ERROR}  [log: ===== [$id]]")
+      FAILED_IDS+=("$id")
+      log "!! Paso '$id' falló (código $rc)"
+      ;;
+  esac
 }
 
-install_dev_tools() {
-    log ""
-    log "${AZUL}=== Configurando entorno de desarrollo ===${NC}"
-    
-    run_cmd "sudo dnf group install -y development-tools" "Development Tools"
-    run_cmd "sudo dnf install -y gcc gcc-c++ make clang patch glibc-devel openssl-devel zlib-devel pkg-config readline-devel libffi-devel libyaml-devel gdbm-devel ncurses-devel" "Librerías desarrollo"
-    
-    log "${VERDE}✓ Herramientas de desarrollo instaladas${NC}"
-}
-
-install_dev_shell() {
-    log ""
-    log "${AZUL}=== Configurando shell Zsh ===${NC}"
-    
-    run_cmd "sudo dnf install -y zsh" "Zsh"
-    
-    if ask_yes_no "¿Instalar Oh My Zsh?"; then
-        run_cmd "sh -c \"\$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\"" "Oh My Zsh" || true
-    fi
-    
-    if ask_yes_no "¿Instalar tema Powerlevel10k?"; then
-        run_cmd "git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \${ZSH_CUSTOM:-\$HOME/.oh-my-zsh/custom}/themes/powerlevel10k" "Powerlevel10k"
-    fi
-    
-    if ask_yes_no "¿Instalar plugin zsh-autosuggestions?"; then
-        run_cmd "git clone https://github.com/zsh-users/zsh-autosuggestions \${ZSH_CUSTOM:-\$HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions" "zsh-autosuggestions"
-    fi
-    
-    log "${VERDE}✓ Shell configurado${NC}"
-}
-
-install_dev_languages() {
-    log ""
-    log "${AZUL}=== Configurando lenguajes de programación ===${NC}"
-    
-    if ask_yes_no "¿Instalar Rust?"; then
-        run_cmd "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" "Rust" || true
-    fi
-    
-    if ask_yes_no "¿Instalar Go?"; then
-        log "${AMARILLO}⚠ Go debe descargarse manualmente desde golang.org/dl${NC}"
-    fi
-    
-    if ask_yes_no "¿Instalar NVM (Node.js)?"; then
-        run_cmd "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash" "NVM" || true
-    fi
-    
-    if ask_yes_no "¿Instalar UV (Python)?"; then
-        run_cmd "curl -LsSf https://astral.sh/uv/install.sh | sh" "UV" || true
-    fi
-    
-    log "${VERDE}✓ Lenguajes configurados${NC}"
-}
-
-install_dev_docker() {
-    log ""
-    log "${AZUL}=== Configurando Docker ===${NC}"
-    
-    run_cmd "sudo dnf install -y dnf-plugins-core" "DNF plugins"
-    run_cmd "sudo dnf-3 config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo" "Docker repo"
-    run_cmd "sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" "Docker"
-    run_cmd "sudo systemctl enable --now docker" "Iniciar Docker"
-    run_cmd "sudo groupadd docker 2>/dev/null || true" "Grupo docker"
-    run_cmd "sudo usermod -aG docker $USER" "Agregar usuario a docker"
-    
-    log "${AMARILLO}⚠ Cierra sesión y vuelve a entrar para usar Docker sin sudo${NC}"
-    log "${VERDE}✓ Docker configurado${NC}"
-}
-
-install_dev_ide() {
-    log ""
-    log "${AZUL}=== Configurando IDEs ===${NC}"
-    
-    run_cmd "sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc" "Key VS Code"
-    echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" | sudo tee /etc/yum.repos.d/vscode.repo > /dev/null
-    run_cmd "sudo dnf install -y code" "VS Code"
-    
-    if ask_yes_no "¿Instalar DBeaver (Flatpak)?"; then
-        if command -v flatpak &> /dev/null; then
-            run_cmd "flatpak install -y flathub io.dbeaver.DBeaverCommunity" "DBeaver"
-        else
-            log "${AMARILLO}⚠ Flatpak no está instalado. Instala Flatpak primero.${NC}"
-        fi
-    fi
-    
-    log "${VERDE}✓ IDEs configurados${NC}"
-}
-
-main_menu() {
-    local exit_menu=0
-    
-    while [[ $exit_menu -eq 0 ]]; do
-        banner
-        echo -e "${VERDE}Selecciona qué deseas instalar:${NC}"
-        echo ""
-        echo -e "  ${AZUL}[1]${NC} Optimizar DNF"
-        echo -e "  ${AZUL}[2]${NC} Agregar repositorios (RPMFusion)"
-        echo -e "  ${AZUL}[3]${NC} Actualizar firmware (LVFS)"
-        echo -e "  ${AZUL}[4]${NC} Instalar drivers NVIDIA"
-        echo -e "  ${AZUL}[5]${NC} Multimedia (codecs + apps)"
-        echo -e "  ${AZUL}[6]${NC} Fuentes Windows"
-        echo -e "  ${AZUL}[7]${NC} Navegadores (Chrome + Brave)"
-        echo -e "  ${AZUL}[8]${NC} Gaming (Steam + MangoHud)"
-        echo -e "  ${AZUL}[9]${NC} Desarrollo (herramientas base)"
-        echo -e "  ${AZUL}[10]${NC} Desarrollo (shell Zsh)"
-        echo -e "  ${AZUL}[11]${NC} Desarrollo (lenguajes)"
-        echo -e "  ${AZUL}[12]${NC} Desarrollo (Docker)"
-        echo -e "  ${AZUL}[13]${NC} Desarrollo (IDEs)"
-        echo -e "  ${AZUL}[14]${NC} ${AMARILLO}INSTALAR TODO${NC}"
-        echo ""
-        echo -e "  ${ROJO}[0]${NC} Salir"
-        echo ""
-        
-        read -p "Opción: " option
-        
-        case $option in
-            1)  optimize_dnf ;;
-            2)  add_repos ;;
-            3)  update_firmware ;;
-            4)  install_nvidia ;;
-            5)  install_multimedia; install_apps ;;
-            6)  install_fonts ;;
-            7)  install_browsers ;;
-            8)  install_gaming ;;
-            9)  install_dev_tools ;;
-            10) install_dev_shell ;;
-            11) install_dev_languages ;;
-            12) install_dev_docker ;;
-            13) install_dev_ide ;;
-            14)
-                log "${AMARILLO}=== INSTALANDO TODO ===${NC}"
-                optimize_dnf
-                add_repos
-                update_firmware
-                install_nvidia
-                install_multimedia
-                install_apps
-                install_fonts
-                install_browsers
-                install_gaming
-                install_dev_tools
-                install_dev_shell
-                install_dev_languages
-                install_dev_docker
-                install_dev_ide
-                log "${VERDE}=== INSTALACIÓN COMPLETA ===${NC}"
-                ;;
-            0)
-                exit_menu=1
-                log "¡Hasta luego!"
-                ;;
-            *)
-                echo "Opción inválida"
-                sleep 1
-                ;;
-        esac
-        
-        if [[ $exit_menu -eq 0 && $option -ne 14 ]]; then
-            echo ""
-            read -p "Presiona Enter para continuar..."
-        fi
-    done
+summary() {
+  local item ids
+  say ""
+  say "${C_BOLD}Resumen:${C_RESET} ${C_GREEN}${#OK[@]} correctos${C_RESET}, ${C_RED}${#FAILED[@]} con errores${C_RESET}, ${#SKIPPED[@]} omitidos"
+  for item in "${FAILED[@]}"; do say "  ${C_RED}✗${C_RESET} $item"; done
+  for item in "${SKIPPED[@]}"; do say "  ${C_DIM}– $item${C_RESET}"; done
+  if ((${#NOTES[@]})); then
+    say ""
+    say "${C_BOLD}Pendiente:${C_RESET}"
+    for item in "${NOTES[@]}"; do say "  ${C_YELLOW}•${C_RESET} $item"; done
+  fi
+  say ""
+  say "Log completo: $LOG_FILE"
+  if ((${#FAILED_IDS[@]})); then
+    ids=$(IFS=,; printf '%s' "${FAILED_IDS[*]}")
+    say "Para reintentar solo lo que falló:"
+    say "  curl -fsSL $REPO_RAW | bash -s -- --only $ids"
+  fi
 }
 
 main() {
-    touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/fedora-postinstall.log"
-    
-    check_fedora
-    check_root
-    
-    banner
-    echo -e "Bienvenido a Fedora PostInstall"
-    echo -e "Log: $LOG_FILE"
-    echo ""
-    
-    if ask_yes_no "¿Ejecutar en modo interactivo?" "y"; then
-        main_menu
-    else
-        echo "Ejecuta con -h para ver opciones"
-    fi
+  parse_args "$@"
+  preflight
+
+  say ""
+  say "${C_BOLD}Fedora PostInstall${C_RESET} · Fedora $FEDORA_VERSION · $ARCH"
+  if ((FEDORA_VERSION > MAX_TESTED_FEDORA)); then
+    say "${C_YELLOW}Aviso:${C_RESET} Fedora $FEDORA_VERSION todavía no está probada con este script; sigo igual."
+  fi
+  say "${C_DIM}Detalle en vivo desde otra terminal: tail -f $LOG_FILE${C_RESET}"
+  say ""
+
+  local s
+  for s in "${STEPS[@]}"; do
+    selected "${s%%|*}" && run_step "${s%%|*}" "${s#*|}"
+  done
+
+  summary
+  ((${#FAILED[@]} == 0))
 }
 
 main "$@"
