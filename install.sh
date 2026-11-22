@@ -37,6 +37,7 @@ SKIP_REASON=""
 LAST_ERROR=""
 ONLY=""
 LAST_CMD=""
+CURRENT_STEP=""
 DL=""
 ON_BATTERY=0
 SNAPPER_HOOK_PENDING=0
@@ -177,6 +178,9 @@ write_root_file() {
 pkgs() {
   local offset p missing=()
   offset=$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)
+  local names=""
+  for p in "$@"; do [[ $p == -* ]] || names+=" $p"; done # sin opciones, para la pantalla
+  local RUN_LABEL="${RUN_LABEL:-dnf: instalando$names}"
   if ! run sudo dnf install -y --skip-unavailable "$@"; then
     LAST_ERROR="dnf: $(log_hint "$offset")"
     return 1
@@ -228,6 +232,7 @@ ensure_flathub() {
 
 flatpaks() {
   ensure_flathub || return 1
+  local RUN_LABEL="flatpak: instalando ${*##*.}"
   run sudo flatpak install -y --noninteractive --or-update --system flathub "$@" ||
     { LAST_ERROR="flatpak falló"; return 1; }
 }
@@ -269,7 +274,9 @@ newest_kernel() {
 # Deja constancia de lo que se está haciendo, para mostrarlo en pantalla.
 # status <texto> [<archivo que se está descargando>] [<offset del log>]
 status() {
-  [[ -n $STATUS_FILE ]] && printf '%s\t%s\t%s' "$1" "${2:-}" "${3:-}" >"$STATUS_FILE" 2>/dev/null
+  # Separador \x1f y no tabulación: `read` junta tabulaciones seguidas y un
+  # campo vacío desplazaría a los demás.
+  [[ -n $STATUS_FILE ]] && printf '%s\x1f%s\x1f%s' "$1" "${2:-}" "${3:-}" >"$STATUS_FILE" 2>/dev/null
   return 0
 }
 
@@ -342,7 +349,7 @@ _ui_bar() {
 # el comando que se está ejecutando.
 ui_detail() {
   local text path offset size line rest phase
-  IFS=$'\t' read -r text path offset <<<"$1"
+  IFS=$'\x1f' read -r text path offset <<<"$1"
   if [[ -n $path ]]; then
     size=$(stat -c %s "$path" 2>/dev/null || echo 0)
     if ((size >= 1048576)); then
@@ -352,20 +359,27 @@ ui_detail() {
     fi
     return
   fi
-  if [[ $text == *dnf* && -n $offset ]]; then
+  if [[ -n $offset ]]; then
     # Solo lo que escribió ESTE comando de dnf, no el anterior.
     line=$(tail -c +$((offset + 1)) "$LOG_FILE" 2>/dev/null | tail -c 6000 | tr '\r' '\n' |
-      grep -E '^\[ *[0-9]+/[0-9]+\]' | tail -n1)
+      grep -E '^\[ *[0-9]+/[0-9]+\]|^Running transaction' | tail -n1)
+    if [[ $line == "Running transaction"* ]]; then
+      printf 'instalando paquetes…'
+      return
+    fi
     if [[ $line =~ ^\[\ *([0-9]+)/([0-9]+)\]\ +(.*)$ ]]; then
       rest=${BASH_REMATCH[3]}
       rest=${rest%-[0-9]*:*} # quita versión: ffmpeg-libs-0:7.1-1.fc45 → ffmpeg-libs
-      case $rest in
-        Installing\ *) phase="instalando ${rest#* }" ;;
-        Upgrading\ *) phase="actualizando ${rest#* }" ;;
-        Removing\ *) phase="quitando ${rest#* }" ;;
-        Verify*) phase="verificando paquetes" ;;
-        Prepare*) phase="preparando la transacción" ;;
-        *) phase="descargando ${rest%% *}" ;;
+      local verb=${rest%% *} pkg=${rest#* }
+      pkg=${pkg%% *} # solo el nombre, sin las columnas de velocidad de dnf
+      case $verb in
+        Installing) phase="instalando $pkg" ;;
+        Upgrading) phase="actualizando $pkg" ;;
+        Removing) phase="quitando $pkg" ;;
+        Verify) phase="verificando paquetes" ;;
+        Prepare) phase="preparando la transacción" ;;
+        Total) phase="descarga completa" ;;
+        *) phase="descargando $verb" ;;
       esac
       printf '%s (%s/%s)' "$phase" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
       return
@@ -377,15 +391,15 @@ ui_detail() {
 # Proceso que redibuja las dos líneas de abajo cada 0,1 s hasta que lo matan.
 ui_ticker() {
   local desc=$1 t0=$2 i=0 cols=80 detail="" el total left det room pct info barw pad bar
-  local frames=${#SPINNER} stopping=0
-  # Ctrl-C: avisar al tiro de que se recibió; el script termina el comando en
-  # curso y luego sale (ver on_interrupt).
-  trap 'stopping=1' INT
+  local frames=${#SPINNER}
+  # Al recibir la orden de parar, termina el cuadro que está dibujando: si se
+  # cortara a la mitad, el cursor quedaría una línea más abajo y el borrado
+  # dejaría una línea fantasma.
+  trap 'exit 0' TERM
   while kill -0 "$$" 2>/dev/null; do # si el script muere, la animación también
     if ((i % 5 == 0)); then
       cols=$(ui_cols)
       detail=$(ui_detail "$(cat "$STATUS_FILE" 2>/dev/null)")
-      ((stopping)) && detail="Ctrl-C recibido: termino lo que está en curso y salgo…"
     fi
     _fmt_time $((EPOCHSECONDS - t0)); el=$_R
     _fmt_time $((EPOCHSECONDS - RUN_START)); total=$_R
@@ -393,7 +407,7 @@ ui_ticker() {
     room=$((cols - 10 - ${#el}))
     _trunc "$desc" "$room"; left=$_R
     det=""
-    if ((room - ${#left} > 12)); then
+    if [[ -n $detail ]] && ((room - ${#left} > 12)); then
       _trunc "$detail" $((room - ${#left} - 3)); det=" · $_R"
     fi
     _repeat ' ' $((cols - 8 - ${#left} - ${#det} - ${#el})); pad=$_R
@@ -651,6 +665,7 @@ step_fonts() {
       LAST_ERROR="el checksum de msttcore-fonts-installer no coincide"
       return 1
     fi
+    local RUN_LABEL="instalando msttcore-fonts-installer (baja Arial, Calibri…)"
     run sudo rpm -i --nodigest --nosignature "$DL" ||
       { LAST_ERROR="msttcore-fonts-installer"; return 1; }
   fi
@@ -873,16 +888,18 @@ step_go() {
   esac
   command -v python3 >/dev/null || pkgs python3 || return 1
   # Última versión estable, nombre del archivo y su sha256 desde go.dev.
-  info=$(curl "${CURL_OPTS[@]}" 'https://go.dev/dl/?mode=json' 2>>"$LOG_FILE" | python3 -c '
+  info=$(curl "${CURL_OPTS[@]}" 'https://go.dev/dl/?mode=json' 2>>"$LOG_FILE") ||
+    { LAST_ERROR="no se pudo conectar con go.dev"; return 1; }
+  info=$(python3 -c '
 import json, sys
 rel = json.load(sys.stdin)[0]
 for f in rel["files"]:
     if f["os"] == "linux" and f["arch"] == sys.argv[1] and f["kind"] == "archive":
         print(rel["version"], f["filename"], f["sha256"])
         break
-' "$arch" 2>>"$LOG_FILE")
+' "$arch" <<<"$info" 2>>"$LOG_FILE")
   read -r latest file sha <<<"$info"
-  [[ ${latest:-} == go1.* && -n ${sha:-} ]] || { LAST_ERROR="no se pudo consultar la última versión en go.dev"; return 1; }
+  [[ ${latest:-} == go1.* && -n ${sha:-} ]] || { LAST_ERROR="respuesta inesperada de go.dev"; return 1; }
   if [[ -x /usr/local/go/bin/go && $(/usr/local/go/bin/go env GOVERSION 2>/dev/null) == "$latest" ]]; then
     log "$latest ya está instalado."
     return 0
@@ -1097,7 +1114,11 @@ cleanup() {
 
 on_interrupt() {
   trap '' INT TERM HUP
+  # La señal puede llegar mientras corre un comando con la salida al log:
+  # se vuelve a la terminal original antes de escribir nada.
+  exec 1>&3 2>&4
   ui_step_stop
+  [[ -n $CURRENT_STEP ]] && ui_result "■" "$C_YELLOW" "$CURRENT_STEP" "interrumpido"
   printf '\n  %s■ Instalación interrumpida.%s Lo que alcanzó a instalarse se mantiene;\n' "$C_YELLOW" "$C_RESET"
   printf '    vuelve a ejecutar el comando para completar el resto.\n'
   # Que lo ya instalado funcione: PATH en .bashrc/.zshrc y snapshots de dnf.
@@ -1131,6 +1152,7 @@ preflight() {
   WORK_DIR=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}" fedora-postinstall.XXXXXX) ||
     die "No se pudo crear un directorio temporal."
   STATUS_FILE="$WORK_DIR/status"
+  exec 3>&1 4>&2 # copia de la terminal, para on_interrupt
   trap cleanup EXIT
   trap on_interrupt INT TERM HUP
 
@@ -1171,9 +1193,11 @@ run_step() {
   log ""
   log "===== [$id] $desc ====="
   STEP_OFFSET[$id]=$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)
+  CURRENT_STEP=$desc
   ui_step_start "$desc"
   "step_$id"
   rc=$?
+  CURRENT_STEP=""
   ui_step_stop
   case $rc in
     0)
@@ -1214,15 +1238,19 @@ summary() {
   pending=$((STEP_TOTAL - ${#OK[@]} - ${#FAILED[@]} - ${#SKIPPED[@]}))
   if ((pending > 0)); then
     say "  ${C_BOLD}${C_YELLOW}Instalación incompleta${C_RESET} ${C_DIM}en $elapsed · faltaron $pending pasos${C_RESET}"
-    errors="${C_RED}✗ ${#FAILED[@]} con errores${C_RESET}"
+    ((UI_LIVE)) && printf '\e]0;Fedora PostInstall · interrumpido\a'
   elif ((${#FAILED[@]})); then
     say "  ${C_BOLD}Instalación terminada con errores${C_RESET} ${C_DIM}en $elapsed${C_RESET}"
-    errors="${C_RED}✗ ${#FAILED[@]} con errores${C_RESET}"
+    ((UI_LIVE)) && printf '\e]0;Fedora PostInstall · con errores\a'
   else
     say "  ${C_BOLD}${C_GREEN}Instalación completa${C_RESET} ${C_DIM}en $elapsed${C_RESET}"
+  fi
+  if ((${#FAILED[@]})); then
+    errors="${C_RED}✗ ${#FAILED[@]} con error$( ((${#FAILED[@]} == 1)) || echo es)${C_RESET}"
+  else
     errors="${C_DIM}✗ 0 con errores${C_RESET}"
   fi
-  say "  ${C_GREEN}✓ ${#OK[@]} listos${C_RESET}   $errors   ${C_DIM}– ${#SKIPPED[@]} omitidos${C_RESET}"
+  say "  ${C_GREEN}✓ ${#OK[@]} listo$( ((${#OK[@]} == 1)) || echo s)${C_RESET}   $errors   ${C_DIM}– ${#SKIPPED[@]} omitido$( ((${#SKIPPED[@]} == 1)) || echo s)${C_RESET}"
   if ((${#FAILED[@]})); then
     say ""
     say "  ${C_BOLD}Con errores${C_RESET}"
@@ -1232,7 +1260,8 @@ summary() {
       # Las líneas del log de ese paso que explican el error.
       excerpt=$(tail -c +$((${STEP_OFFSET[${FAILED_IDS[$i]}]:-0} + 1)) "$LOG_FILE" 2>/dev/null |
         awk 'NR > 1 && /^===== \[/ {exit} {print}' |
-        grep -E 'Problem|No match|nothing provides|conflicts|[Ee]rror|[Ff]ailed|404' | grep -v '^!!' | tail -n 3)
+        grep -E 'Problem|No match|nothing provides|conflicts|[Ee]rror|[Ff]ailed|404' | grep -v '^!!' |
+        awk '!seen[$0]++' | tail -n 3)
       while IFS= read -r line; do
         [[ -n $line ]] && say "      ${C_DIM}$(trunc "${line#"${line%%[![:space:]]*}"}" $((cols - 10)))${C_RESET}"
       done <<<"$excerpt"
