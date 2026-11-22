@@ -1,188 +1,122 @@
-# Development tools
+# Desarrollo (paso a paso)
 
-```
+Comandos equivalentes a lo que hace `install.sh` para la parte de desarrollo.
+
+## Herramientas y librerías
+
+```bash
 sudo dnf group install development-tools
+sudo dnf install gcc gcc-c++ make cmake clang patch git pkgconf-pkg-config \
+  glibc-devel openssl-devel zlib-devel \
+  readline-devel libffi-devel libyaml-devel gdbm-devel ncurses-devel
 ```
 
-## Librerias adicionales
+- **Compiladores y base:** gcc, gcc-c++, clang, cmake, make y patch.
+- **Librerías:** glibc-devel, openssl-devel y zlib-devel.
+- **Para compilar Ruby y Python:** readline-devel, libffi-devel, libyaml-devel, gdbm-devel y ncurses-devel.
 
-```
-sudo dnf install -y gcc gcc-c++ make cmake clang patch \
-  glibc-devel openssl-devel zlib-devel pkg-config \
-  readline-devel libffi-devel libyaml-devel \
-  gdbm-devel ncurses-devel
-```
+## Herramientas de terminal para agentes
 
-- **Compiladores y herramientas base**: gcc, gcc-c++, clang, make y patch.
-- **Librerías de desarrollo**: glibc-devel, openssl-devel, zlib-devel.
-- **Dependencias de lenguajes (Ruby/Python)**: readline-devel, libffi-devel, libyaml-devel, gdbm-devel, ncurses-devel.
-- **Utilidades de sistema**: pkg-config.
-
-# Herramientas de terminal para agentes
-
-```
+```bash
 sudo dnf install gh ripgrep fd-find fzf jq git-delta lazygit direnv distrobox
 ```
 
-- **gh**: PRs, issues y CI de GitHub desde la terminal (los agentes lo usan harto).
+- **gh**: PRs, issues y CI de GitHub desde la terminal (los agentes lo usan mucho).
 - **ripgrep / fd / fzf / jq**: buscar en código y archivos, y manejar JSON, mucho más rápido.
 - **git-delta / lazygit**: revisar los diffs que generan los agentes.
 - **direnv**: variables de entorno por proyecto (`.envrc`).
 - **distrobox**: contenedores para aislar entornos o agentes.
 
-# Install ghostty
+## Zsh + Oh My Zsh + Powerlevel10k
 
+```bash
+sudo dnf install zsh
+RUNZSH=no CHSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.oh-my-zsh/custom/themes/powerlevel10k
+git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+# Shell por defecto (usa la ruta de /etc/shells, no la de `which zsh`)
+sudo usermod --shell /usr/bin/zsh "$USER"
 ```
+
+En `~/.zshrc`:
+
+```bash
+ZSH_THEME="powerlevel10k/powerlevel10k"
+plugins=(git docker zsh-autosuggestions)
+```
+
+## Ghostty
+
+```bash
 sudo dnf copr enable scottames/ghostty
 sudo dnf install ghostty
 ```
 
-# Install zsh
+## Lenguajes
 
-```
-sudo dnf install zsh
-zsh --version
-```
+```bash
+# Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
 
-### Cambiar shell
+# Go (última versión, en /usr/local/go)
+V=$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)
+curl -fLO "https://go.dev/dl/$V.linux-amd64.tar.gz"   # arm64 en equipos ARM
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf "$V.linux-amd64.tar.gz"
 
-chsh -s $(which zsh)
+# Node.js LTS con NVM
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh | PROFILE=/dev/null bash
+source ~/.nvm/nvm.sh && nvm install --lts
 
-### Oh My Zsh
-
-```
-sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-```
-
-### Tema
-
-```
-git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
-
-ZSH_THEME="powerlevel10k/powerlevel10k"
-
-source ~/.zshrc
+# uv (Python)
+curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh
 ```
 
-### Plugins
+El script deja el PATH de todo esto en un solo bloque al final de `~/.bashrc` y `~/.zshrc`:
 
-```
-git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
-
-plugins=(git docker zsh-autosuggestions)
-
-source ~/.zshrc
+```bash
+export GOROOT=/usr/local/go GOPATH="$HOME/go" NVM_DIR="$HOME/.nvm"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$GOPATH/bin:$GOROOT/bin:$HOME/.opencode/bin:$PATH"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 ```
 
-## Rust
+## Docker
 
-```
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-## Golang
-
-```
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.26.3.linux-amd64.tar.gz
-```
-
-### Agregar path a .zshrc
-
-```
-export GOROOT=/usr/local/go
-export GOPATH=$HOME/go
-export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
-```
-
-```
-source ~/.zshrc
-```
-
-## UV (Python)
-```
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-## NVM (NodeJS)
-
-```
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-source ~/.zshrc
-```
-
-# Docker Engine
-
-```
-sudo dnf -y install dnf5-plugins
+```bash
+sudo dnf install dnf5-plugins
 sudo dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo
 sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
-
-### Inicializar agregar el usuario para no usar sudo.
-
-```
 sudo systemctl enable --now docker
-sudo groupadd docker
-sudo usermod -aG docker $USER
-newgrp docker
+sudo usermod -aG docker "$USER"   # cierra sesión y vuelve a entrar
 ```
 
-## Docker Compose
+Compose viene como plugin: se usa con `docker compose`. Ojo: estar en el grupo `docker` equivale a tener permisos de root.
 
-```
-sudo curl -SL https://github.com/docker/compose/releases/download/v5.1.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-```
+## Editores
 
-# Dbeaver
-
-```
-flatpak install flathub io.dbeaver.DBeaverCommunity
-```
-
+```bash
 # Zed
-
-```
 curl -f https://zed.dev/install.sh | sh
-```
 
 # Cursor
-
-```
-sudo tee /etc/yum.repos.d/cursor.repo << EOL
+sudo tee /etc/yum.repos.d/cursor.repo <<'EOF'
 [cursor]
 name=Cursor
 baseurl=https://downloads.cursor.com/yumrepo
 enabled=1
 gpgcheck=1
 gpgkey=https://downloads.cursor.com/keys/anysphere.asc
-EOL
-```
-
-```
+EOF
 sudo dnf install cursor
+
+# DBeaver
+flatpak install flathub io.dbeaver.DBeaverCommunity
 ```
 
-# OpenCode
+## Agentes de IA y notas
 
-```
-curl -fsSL https://opencode.ai/install | bash
-```
-
-# Claude Code
-
-```
-curl -fsSL https://claude.ai/install.sh | bash
-```
-
-# Herdr
-
-```
-curl -fsSL https://herdr.dev/install.sh | sh
-```
-
-# Obsidian
-
-```
-flatpak install flathub md.obsidian.Obsidian
+```bash
+curl -fsSL https://claude.ai/install.sh | bash                    # Claude Code
+curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path  # OpenCode
+curl -fsSL https://herdr.dev/install.sh | sh                      # Herdr
+flatpak install flathub md.obsidian.Obsidian                       # Obsidian
 ```
