@@ -82,9 +82,9 @@ STEPS=(
   "zsh|Zsh + Oh My Zsh + Powerlevel10k"
   "env|Variables de entorno (PATH, Go, NVM, direnv, fzf)"
   "ghostty|Terminal Ghostty"
-  "rust|Rust"
+  "rust|Rust + sccache"
   "go|Go"
-  "node|Node.js LTS (NVM)"
+  "node|Node.js LTS (NVM) + pnpm"
   "uv|uv (Python)"
   "docker|Docker"
   "zed|Zed"
@@ -878,6 +878,10 @@ step_ghostty() {
 }
 
 step_rust() {
+  # sccache guarda las dependencias ya compiladas en una caché compartida:
+  # un worktree nuevo (o un agente en otra carpeta) no las recompila. El paso
+  # "env" lo activa con RUSTC_WRAPPER.
+  pkgs sccache || return 1
   if [[ -x $HOME/.cargo/bin/rustup ]]; then
     run "$HOME/.cargo/bin/rustup" update
     return
@@ -939,7 +943,13 @@ step_node() {
   fi
   local RUN_LABEL="instalando Node.js LTS"
   # shellcheck disable=SC2016  # $HOME se expande dentro del bash hijo
-  run bash -c 'source "$HOME/.nvm/nvm.sh" && nvm install --lts && nvm alias default "lts/*"'
+  run bash -c 'source "$HOME/.nvm/nvm.sh" && nvm install --lts && nvm alias default "lts/*"' || return 1
+  # pnpm: guarda cada paquete una vez y lo enlaza en cada proyecto (menos
+  # disco y menos tiempo con varios worktrees). Se instala con el npm de
+  # NVM y no con el paquete de Fedora, que traería un segundo Node.
+  RUN_LABEL="instalando pnpm"
+  # shellcheck disable=SC2016
+  run bash -c 'source "$HOME/.nvm/nvm.sh" && nvm use default >/dev/null && npm install -g pnpm'
 }
 
 step_uv() {
@@ -1048,6 +1058,8 @@ done
 unset _d
 export PATH
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+# sccache: caché compartida de compilación para Rust.
+command -v sccache >/dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # direnv (variables por proyecto) y fzf (Ctrl-R: buscar en el historial).
 if [ -n "${ZSH_VERSION:-}" ]; then _sh=zsh; else _sh=bash; fi
 command -v direnv >/dev/null 2>&1 && eval "$(direnv hook $_sh)"

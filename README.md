@@ -79,9 +79,9 @@ bash install.sh
 | `devtools` | Compiladores (gcc, clang, cmake) y librerías de desarrollo | Para compilar dependencias nativas de Python, Ruby, Node, etc. |
 | `cli` | gh, ripgrep, fd, fzf, jq, delta, lazygit, direnv, distrobox | Las herramientas que más usan los agentes, diffs legibles, variables por proyecto y contenedores para aislar cosas |
 | `zsh` | Zsh + Oh My Zsh + Powerlevel10k + autosuggestions, como shell por defecto | Terminal más cómoda: sugerencias, git en el prompt. Si ya personalizaste tu tema o plugins, se respetan |
-| `env` | Un solo bloque en `.bashrc` y `.zshrc` con el PATH, NVM, direnv y fzf (Ctrl-R) | Que todo lo que se instala en tu carpeta personal funcione al abrir la terminal |
+| `env` | Un solo bloque en `.bashrc` y `.zshrc` con el PATH, NVM, sccache, direnv y fzf (Ctrl-R) | Que todo lo que se instala en tu carpeta personal funcione al abrir la terminal |
 | `ghostty` | Terminal Ghostty | Terminal rápida, con aceleración por GPU |
-| `rust`, `go`, `node`, `uv` | rustup, Go (última versión, verificada con checksum), Node.js LTS con NVM, uv para Python | Los lenguajes quedan en tu carpeta personal, sin conflictos con los paquetes del sistema |
+| `rust`, `go`, `node`, `uv` | rustup + sccache, Go (última versión, verificada con checksum), Node.js LTS con NVM + pnpm, uv para Python | Los lenguajes quedan en tu carpeta personal, sin conflictos con los paquetes del sistema. sccache y pnpm aceleran el trabajo con varios worktrees: las dependencias se compilan y se descargan una sola vez |
 | `docker` | Docker Engine + Compose, con tu usuario en el grupo `docker` | Para usar `docker` sin `sudo`. Si Docker aún no publica paquetes para una Fedora nueva, usa el de Fedora |
 | `zed`, `cursor`, `dbeaver` | Editores y cliente de bases de datos | — |
 | `claude`, `codex`, `opencode`, `herdr` | Claude Code, Codex CLI, OpenCode y Herdr | Agentes de IA para programar, y Herdr para correr varios en paralelo |

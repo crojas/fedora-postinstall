@@ -63,9 +63,14 @@ V=$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)
 curl -fLO "https://go.dev/dl/$V.linux-amd64.tar.gz"   # arm64 en equipos ARM
 sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf "$V.linux-amd64.tar.gz"
 
-# Node.js LTS con NVM
+# sccache: caché compartida de compilación para Rust
+sudo dnf install sccache
+export RUSTC_WRAPPER=sccache   # el script lo deja en el bloque de .bashrc/.zshrc
+
+# Node.js LTS con NVM, y pnpm
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh | PROFILE=/dev/null bash
 source ~/.nvm/nvm.sh && nvm install --lts
+npm install -g pnpm
 
 # uv (Python)
 curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh
@@ -77,7 +82,12 @@ El script deja el PATH de todo esto en un solo bloque al final de `~/.bashrc` y 
 export GOROOT=/usr/local/go GOPATH="$HOME/go" NVM_DIR="$HOME/.nvm"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$GOPATH/bin:$GOROOT/bin:$HOME/.opencode/bin:$PATH"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+command -v sccache >/dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 ```
+
+**sccache** sirve sobre todo con varios worktrees o agentes en paralelo: las dependencias que ya se compilaron en una carpeta no se recompilan en otra. Para ver si está funcionando: `sccache --show-stats`.
+
+**pnpm** guarda cada paquete una sola vez en el disco y lo enlaza en cada proyecto. Úsalo en los proyectos que tengan `pnpm-lock.yaml`, o para empezar uno nuevo; en un proyecto con `package-lock.json` sigue usando `npm`.
 
 ## Docker
 
