@@ -84,7 +84,7 @@ bash install.sh
 | `rust`, `go`, `node`, `uv` | rustup, Go (última versión, verificada con checksum), Node.js LTS con NVM, uv para Python | Los lenguajes quedan en tu carpeta personal, sin conflictos con los paquetes del sistema |
 | `docker` | Docker Engine + Compose, con tu usuario en el grupo `docker` | Para usar `docker` sin `sudo`. Si Docker aún no publica paquetes para una Fedora nueva, usa el de Fedora |
 | `zed`, `cursor`, `dbeaver` | Editores y cliente de bases de datos | — |
-| `claude`, `opencode`, `herdr` | Claude Code, OpenCode y Herdr | Agentes de IA para programar, y Herdr para correr varios en paralelo |
+| `claude`, `codex`, `opencode`, `herdr` | Claude Code, Codex CLI, OpenCode y Herdr | Agentes de IA para programar, y Herdr para correr varios en paralelo |
 | `obsidian` | Obsidian | Notas y documentación en Markdown |
 
 ### Documentos
@@ -144,7 +144,7 @@ Para que sepas qué toca el script antes de ejecutarlo:
   - el firmware del equipo, si hay actualizaciones.
 - **Tu usuario:** queda con zsh como shell y en el grupo `docker`.
 - **Tu carpeta personal:**
-  - `~/.oh-my-zsh`, `~/.nvm`, `~/.cargo`, `~/.rustup` y `~/.local/bin` (uv, Zed, Claude Code, Herdr);
+  - `~/.oh-my-zsh`, `~/.nvm`, `~/.cargo`, `~/.rustup` y `~/.local/bin` (uv, Zed, Claude Code, Codex, Herdr);
   - `~/.opencode`, `~/.local/share/fonts/microsoft`, GE-Proton en `~/.local/share/Steam/compatibilitytools.d` y los logs;
   - un bloque marcado `# >>> fedora-postinstall >>>` en `.bashrc` y `.zshrc`, que se reescribe en cada ejecución y nunca se duplica;
   - `delta` como visor de diffs en git, solo si no tenías otro configurado.
@@ -154,7 +154,7 @@ Para que sepas qué toca el script antes de ejecutarlo:
 - **Verificado:**
   - El paquete de RPM Fusion se verifica con las llaves que publica Fedora.
   - Go, GE-Proton y las fuentes de Microsoft se verifican con checksum. El RPM de las fuentes no viene firmado, por eso se fija su sha256 en el script.
-- **Sin versión fija:** los instaladores oficiales (rustup, uv, NVM, Oh My Zsh, Zed, Claude Code, OpenCode, Herdr) se descargan por HTTPS desde sus sitios y se usa siempre su última versión.
+- **Sin versión fija:** los instaladores oficiales (rustup, uv, NVM, Oh My Zsh, Zed, Claude Code, Codex, OpenCode, Herdr) se descargan por HTTPS desde sus sitios y se usa siempre su última versión.
 - **Grupo `docker`:** estar en él equivale a tener permisos de root. Tenlo en cuenta si dejas agentes corriendo con permisos amplios.
 
 ## Paso a paso manual

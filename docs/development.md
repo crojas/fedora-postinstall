@@ -116,6 +116,7 @@ flatpak install flathub io.dbeaver.DBeaverCommunity
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash                    # Claude Code
+curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh  # Codex CLI
 curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path  # OpenCode
 curl -fsSL https://herdr.dev/install.sh | sh                      # Herdr
 flatpak install flathub md.obsidian.Obsidian                       # Obsidian

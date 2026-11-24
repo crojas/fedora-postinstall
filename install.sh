@@ -91,6 +91,7 @@ STEPS=(
   "cursor|Cursor"
   "dbeaver|DBeaver (Flatpak)"
   "claude|Claude Code"
+  "codex|Codex CLI"
   "opencode|OpenCode"
   "herdr|Herdr (multiplexor para agentes de IA)"
   "obsidian|Obsidian (Flatpak)"
@@ -998,6 +999,16 @@ step_claude() {
   download https://claude.ai/install.sh || return 1
   f=$DL
   run bash "$f"
+}
+
+step_codex() {
+  local f RUN_LABEL="instalando Codex CLI"
+  download https://chatgpt.com/codex/install.sh || return 1
+  f=$DL
+  # CODEX_NON_INTERACTIVE: al final pregunta "Start Codex now?" leyendo de
+  # /dev/tty (no de la entrada estándar) y dejaría el script esperando.
+  # ~/.local/bin en el PATH: así no agrega su propio bloque a .bashrc/.zshrc.
+  run env CODEX_NON_INTERACTIVE=1 PATH="$HOME/.local/bin:$PATH" sh "$f"
 }
 
 step_opencode() {
