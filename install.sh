@@ -62,6 +62,8 @@ STEPS=(
   "@Hardware"
   "nvidia|Drivers NVIDIA"
   "hwaccel|Aceleración de video por hardware"
+  "@Escritorio"
+  "extensions|Extension Manager (extensiones de GNOME)"
   "@Multimedia y apps"
   "multimedia|Codecs multimedia"
   "fonts|Fuentes de Microsoft"
@@ -612,6 +614,13 @@ step_nvidia() {
     note "Secure Boot: ANTES de reiniciar ejecuta 'sudo mokutil --import $key' y elige una contraseña de un solo uso. Al reiniciar aparece una pantalla azul (MOK): Enroll MOK > Continue > Yes, e ingresa esa contraseña. Sin esto el driver NVIDIA no carga."
   fi
   return 0
+}
+
+# Extension Manager: buscar, instalar y configurar extensiones de GNOME desde
+# una app, sin pasar por el navegador ni extensions.gnome.org.
+step_extensions() {
+  rpm -q gnome-shell &>/dev/null || { skip "el escritorio no es GNOME"; return; }
+  flatpaks com.mattjakeman.ExtensionManager
 }
 
 step_multimedia() {

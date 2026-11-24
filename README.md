@@ -47,6 +47,12 @@ bash install.sh
 | `nvidia` | Driver NVIDIA, solo si detecta una GPU NVIDIA. Elige la serie correcta para GPU antiguas y prepara la llave de Secure Boot | El driver libre no sirve para jugar ni para NVENC/CUDA. Con Secure Boot, sin la llave el driver no carga |
 | `hwaccel` | Drivers VA-API completos para Intel, AMD y NVIDIA | Los de Fedora no aceleran H.264/H.265; con estos, el video y la edición usan la GPU y no la CPU |
 
+### Escritorio
+
+| Paso | Qué hace | Por qué |
+|---|---|---|
+| `extensions` | Extension Manager (solo en GNOME) | Buscar, instalar y configurar extensiones de GNOME desde una app, sin pasar por el navegador |
+
 ### Multimedia y apps
 
 | Paso | Qué hace | Por qué |

@@ -94,6 +94,14 @@ sudo dnf install akmod-nvidia xorg-x11-drv-nvidia-cuda
 1. Ejecuta `sudo mokutil --import /etc/pki/akmods/certs/public_key.der` y elige una contraseña de un solo uso.
 2. Al reiniciar aparece una pantalla azul (MOK): *Enroll MOK* → *Continue* → *Yes*, e ingresa esa contraseña.
 
+## Extensiones de GNOME
+
+```bash
+flatpak install flathub com.mattjakeman.ExtensionManager
+```
+
+Extension Manager permite buscar, instalar, activar y configurar extensiones de GNOME desde una app.
+
 ## Codecs multimedia
 
 ```bash
