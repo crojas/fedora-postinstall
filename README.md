@@ -164,3 +164,7 @@ Si prefieres hacerlo a mano o ver los comandos exactos:
 - [docs/sistema.md](docs/sistema.md): sistema, snapshots, codecs, drivers, fuentes y apps
 - [docs/gaming.md](docs/gaming.md): Steam, NTSYNC, GE-Proton y grabación
 - [docs/development.md](docs/development.md): herramientas, lenguajes, Docker y editores
+
+## Licencia
+
+[MIT](LICENSE): puedes usar, copiar, modificar y distribuir este script libremente, manteniendo el aviso de copyright.
